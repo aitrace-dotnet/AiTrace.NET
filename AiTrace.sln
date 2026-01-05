@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36511.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AiTrace", "src\AiTrace\AiTrace.csproj", "{D41084CF-A1FD-F77E-D10F-54DBAFABA6C9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AiTrace.Sample", "samples\AiTrace.Sample\AiTrace.Sample.csproj", "{F553C36E-D7B7-4B65-B2BC-14986301C388}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D41084CF-A1FD-F77E-D10F-54DBAFABA6C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D41084CF-A1FD-F77E-D10F-54DBAFABA6C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D41084CF-A1FD-F77E-D10F-54DBAFABA6C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D41084CF-A1FD-F77E-D10F-54DBAFABA6C9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F553C36E-D7B7-4B65-B2BC-14986301C388}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F553C36E-D7B7-4B65-B2BC-14986301C388}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F553C36E-D7B7-4B65-B2BC-14986301C388}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F553C36E-D7B7-4B65-B2BC-14986301C388}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {03335961-0D82-4044-BF91-6E4FDDCAD306}
+	EndGlobalSection
+EndGlobal
