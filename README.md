@@ -22,6 +22,8 @@ dotnet add package AiTrace --prerelease
 
 ## Quickstart
 
+By default, audit files are written to a local `./aitrace` folder next to your application's executable.
+
 ~~~csharp
 using AiTrace;
 
