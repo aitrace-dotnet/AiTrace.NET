@@ -1,27 +1,35 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-	<PropertyGroup>
-		<TargetFramework>net8.0</TargetFramework>
-		<ImplicitUsings>enable</ImplicitUsings>
-		<Nullable>enable</Nullable>
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
 
-		<PackageId>AiTrace</PackageId>
-		<Version>0.1.0-preview.1</Version>
-		<Authors>François Larouche</Authors>
-		<Description>Audit &amp; proof layer for AI decisions in .NET. Record prompts and outputs with hashes and timestamps to create verifiable audit trails.</Description>
-		<PackageTags>dotnet;ai;llm;audit;compliance;logging;tracing</PackageTags>
+    <!-- NuGet package metadata -->
+    <PackageId>AiTrace</PackageId>
+    <Version>0.1.0-preview.2</Version>
+    <Authors>François Larouche</Authors>
+    <Description>Audit &amp; proof layer for AI decisions in .NET. Record prompts and outputs with hashes and timestamps to create verifiable audit trails.</Description>
+    <PackageTags>dotnet;ai;llm;audit;compliance;logging;tracing</PackageTags>
 
-		<RepositoryUrl>https://github.com/franklar21/AiTrace.NET</RepositoryUrl>
-		<RepositoryType>git</RepositoryType>
+    <!-- Repo info shown on NuGet -->
+    <RepositoryUrl>https://github.com/franklar21/AiTrace.NET</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
 
-		<PackageLicenseExpression>MIT</PackageLicenseExpression>
-		<PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- License + README on nuget.org -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
 
-		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-	</PropertyGroup>
+    <!-- Optional but nice -->
+    <PackageProjectUrl>https://github.com/FrankLar21/AiTrace.NET</PackageProjectUrl>
 
-	<ItemGroup>
-		<None Include="..\..\README.md" Pack="true" PackagePath="\" />
-	</ItemGroup>
+    <!-- Packaging -->
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <!-- Pack the repo root README.md into the nupkg root as README.md -->
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>
