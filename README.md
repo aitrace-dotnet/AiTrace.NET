@@ -24,7 +24,6 @@ dotnet add package AiTrace --prerelease
 
 By default, audit files are written to a local `./aitrace` folder next to your application's executable.
 
-
 ~~~csharp
 using AiTrace;
 
@@ -57,6 +56,28 @@ This creates an **immutable JSON audit record** containing:
 - user identifier
 - prompt and output (optional)
 - structured metadata
+
+---
+
+## AiTrace for Compliance & Legal Teams
+
+AiTrace provides a **cryptographic proof layer** for automated decisions.
+
+It enables organizations to prove, **after the fact**, that:
+- a specific automated decision occurred at a specific time
+- the exact inputs and outputs involved are known
+- the record has not been altered since it was created
+
+AiTrace is designed for **post-incident analysis**, audits, and regulatory inquiries.  
+It does **not** explain or justify decisions — it proves **what happened**.
+
+Typical use cases include:
+- contested automated decisions
+- regulatory or compliance audits
+- internal investigations
+- legal or risk documentation
+
+**AiTrace transforms automated decisions into technically and legally defensible evidence.**
 
 ---
 
