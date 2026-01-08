@@ -18,6 +18,9 @@ public sealed record AuditRecord
     public string? Prompt { get; init; }
     public string? Output { get; init; }
 
+    public string? Signature { get; init; }
+    public string? SignatureAlgorithm { get; init; }
+
     // Minimal metadata (serialized as JSON string for easy storage)
     public string MetadataJson { get; init; } = "{}";
 

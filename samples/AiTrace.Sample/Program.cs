@@ -1,11 +1,23 @@
 ﻿using AiTrace;
 using AiTrace.Pro;
+using AiTrace.Pro.Signing;
+using AiTrace.Pro.Stores;
 
 AiTrace.AiTrace.Configure(o =>
 {
     o.StoreContent = true;
     o.BasicRedaction = true;
-    // o.Store = new JsonAuditStore(@"C:\temp\aitrace"); // optional
+
+    // IMPORTANT: for now, load a PEM private key from disk (dev-only).
+    // We'll later provide a proper key management story and tooling.
+    var privateKeyPemPath = @"C:\temp\aitrace_private.pem";
+    var privateKeyPem = File.ReadAllText(privateKeyPemPath);
+
+    var signer = new RsaAuditSignatureService(privateKeyPem);
+
+    // Wrap the default JSON store with a signed store (Pro).
+    o.Store = new SignedAuditStore(new JsonAuditStore(), signer);
+
 });
 
 var decision = new AiDecision
