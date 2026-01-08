@@ -59,6 +59,63 @@ This creates an **immutable JSON audit record** containing:
 
 ---
 
+## Verification & Integrity
+
+AiTrace audit records are designed to be **verifiable after the fact**.
+
+Each record includes:
+- a cryptographic hash
+- an optional hash chain (`PrevHashSha256`)
+- optional cryptographic signatures (Pro)
+
+Audit trails can be verified programmatically to detect:
+- record tampering
+- missing or altered files
+- broken chains
+- invalid signatures
+
+Verification produces a structured result indicating **exactly what failed and why**.
+
+---
+
+## VerificationStatus (Pro)
+
+When verifying an audit trail, AiTrace returns a structured status indicating the outcome.
+
+Typical statuses include:
+- `Ok`
+- `HashMismatch`
+- `ChainBroken`
+- `SignatureInvalid`
+- `SignatureServiceMissing`
+- `NoFiles`
+- `ParseError`
+
+This allows verification results to be:
+- machine-readable
+- audit-friendly
+- suitable for automation, reporting, or compliance workflows
+
+---
+
+## Cryptographic Signatures (Pro)
+
+AiTrace Pro supports **cryptographic signing** of audit records.
+
+When enabled:
+- the final audit record hash is signed (RSA-SHA256)
+- signatures provide **non-repudiation**
+- records can be independently verified using a public key
+
+This enables organizations to prove that:
+- a record was produced by a trusted system
+- the record has not been altered
+- the audit trail is legally defensible
+
+Signatures are applied **after all record data is finalized**, ensuring stability.
+
+---
+
 ## AiTrace for Compliance & Legal Teams
 
 AiTrace provides a **cryptographic proof layer** for automated decisions.
@@ -87,7 +144,7 @@ AiTrace.NET is useful when you need to:
 - keep an auditable record of AI-driven decisions
 - investigate incidents or user disputes involving AI output
 - comply with internal or external audit requirements
-- understand how prompts and outputs evolve over time
+- demonstrate integrity of automated systems
 
 ---
 
