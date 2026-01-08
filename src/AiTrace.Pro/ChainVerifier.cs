@@ -13,7 +13,6 @@ public sealed class ChainVerifier
 
     private readonly SignatureOptions _sig;
 
-    // ✅ Nouveau: injection optionnelle pour vérifier les signatures
     public ChainVerifier(SignatureOptions? signatureOptions = null)
     {
         _sig = signatureOptions ?? new SignatureOptions();
@@ -22,23 +21,42 @@ public sealed class ChainVerifier
     public VerificationResult Verify(string auditDirectory)
     {
         if (string.IsNullOrWhiteSpace(auditDirectory))
-            return VerificationResult.Fail(0, "Audit directory is empty.");
+        {
+            return VerificationResult.Fail(
+                VerificationStatus.ParseError,
+                0,
+                "Audit directory is empty."
+            );
+        }
 
         if (!Directory.Exists(auditDirectory))
-            return VerificationResult.Fail(0, $"Audit directory not found: {auditDirectory}");
+        {
+            return VerificationResult.Fail(
+                VerificationStatus.DirectoryNotFound,
+                0,
+                $"Audit directory not found: {auditDirectory}"
+            );
+        }
 
         var files = Directory.GetFiles(auditDirectory, "*.json", SearchOption.AllDirectories)
-            .OrderBy(f => File.GetLastWriteTimeUtc(f)) // ordre chronologique
+            .OrderBy(Path.GetFileName)
             .ToArray();
 
         if (files.Length == 0)
-            return VerificationResult.Fail(0, $"No audit JSON files found under: {auditDirectory}");
+        {
+            return VerificationResult.Fail(
+                VerificationStatus.NoFiles,
+                0,
+                $"No audit JSON files found under: {auditDirectory}"
+            );
+        }
 
         string? lastHash = null;
 
         for (int idx = 0; idx < files.Length; idx++)
         {
             var file = files[idx];
+            var fileName = Path.GetFileName(file);
 
             AuditRecord? record;
             try
@@ -48,21 +66,37 @@ public sealed class ChainVerifier
             }
             catch (Exception ex)
             {
-                return VerificationResult.Fail(idx, $"Failed to read/parse '{Path.GetFileName(file)}': {ex.Message}");
+                return VerificationResult.Fail(
+                    VerificationStatus.ParseError,
+                    idx,
+                    $"Failed to read/parse '{fileName}': {ex.Message}",
+                    fileName
+                );
             }
 
             if (record is null)
-                return VerificationResult.Fail(idx, $"Invalid JSON record in '{Path.GetFileName(file)}'.");
+            {
+                return VerificationResult.Fail(
+                    VerificationStatus.ParseError,
+                    idx,
+                    $"Invalid JSON record in '{fileName}'.",
+                    fileName
+                );
+            }
 
-            // 1) Vérifie le hash du record
+            // 1) Hash check
             var expected = AuditHasher.ComputeRecordHash(record);
             if (!string.Equals(record.HashSha256, expected, StringComparison.OrdinalIgnoreCase))
             {
-                return VerificationResult.Fail(idx,
-                    $"Hash mismatch in '{Path.GetFileName(file)}'. Expected {expected} but found {record.HashSha256 ?? "(null)"}.");
+                return VerificationResult.Fail(
+                    VerificationStatus.HashMismatch,
+                    idx,
+                    $"Hash mismatch in '{fileName}'. Expected {expected} but found {record.HashSha256 ?? "(null)"}.",
+                    fileName
+                );
             }
 
-            // ✅ 1.5) Vérifie la signature si elle est présente
+            // 1.5) Signature check (if present)
             var hasSignature =
                 !string.IsNullOrWhiteSpace(record.Signature) &&
                 !string.IsNullOrWhiteSpace(record.SignatureAlgorithm);
@@ -71,32 +105,41 @@ public sealed class ChainVerifier
             {
                 if (_sig.SignatureService is null)
                 {
-                    return VerificationResult.Fail(idx,
-                        $"Signature present in '{Path.GetFileName(file)}' but no SignatureService configured.");
+                    return VerificationResult.Fail(
+                        VerificationStatus.SignatureServiceMissing,
+                        idx,
+                        $"Signature present in '{fileName}' but no SignatureService configured.",
+                        fileName,
+                        signatureChecked: true,
+                        signatureValid: false
+                    );
                 }
 
                 var ok = _sig.SignatureService.Verify(record.HashSha256, record.Signature!);
                 if (!ok)
                 {
-                    return VerificationResult.Fail(idx,
-                        $"Signature invalid in '{Path.GetFileName(file)}'.");
+                    return VerificationResult.Fail(
+                        VerificationStatus.SignatureInvalid,
+                        idx,
+                        $"Signature invalid in '{fileName}'.",
+                        fileName,
+                        signatureChecked: true,
+                        signatureValid: false
+                    );
                 }
             }
 
-            // 2) Vérifie la chaîne si PrevHashSha256 est présent
-            if (idx == 0)
+            // 2) Chain check (if PrevHashSha256 present)
+            if (idx > 0 && !string.IsNullOrWhiteSpace(record.PrevHashSha256))
             {
-                // premier record : PrevHash peut être null/empty, on accepte
-            }
-            else
-            {
-                if (!string.IsNullOrWhiteSpace(record.PrevHashSha256))
+                if (!string.Equals(record.PrevHashSha256, lastHash, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (!string.Equals(record.PrevHashSha256, lastHash, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return VerificationResult.Fail(idx,
-                            $"Chain broken at '{Path.GetFileName(file)}'. PrevHashSha256={record.PrevHashSha256} but previous hash was {lastHash}.");
-                    }
+                    return VerificationResult.Fail(
+                        VerificationStatus.ChainBroken,
+                        idx,
+                        $"Chain broken at '{fileName}'. PrevHashSha256={record.PrevHashSha256} but previous hash was {lastHash}.",
+                        fileName
+                    );
                 }
             }
 
