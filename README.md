@@ -74,7 +74,9 @@ Audit trails can be verified programmatically to detect:
 - broken chains
 - invalid signatures
 
-Verification produces a structured result indicating **exactly what failed and why**.
+Verification produces:
+- a structured machine-readable result
+- a human-readable compliance report summarizing integrity and authenticity
 
 ---
 
@@ -92,7 +94,7 @@ Typical statuses include:
 - `ParseError`
 
 This allows verification results to be:
-- machine-readable
+- deterministic
 - audit-friendly
 - suitable for automation, reporting, or compliance workflows
 
