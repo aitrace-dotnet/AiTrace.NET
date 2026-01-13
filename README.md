@@ -90,6 +90,7 @@ Typical statuses include:
 - `ChainBroken`
 - `SignatureInvalid`
 - `SignatureServiceMissing`
+- `SignatureRequiredButMissing`
 - `NoFiles`
 - `ParseError`
 
@@ -115,6 +116,29 @@ This enables organizations to prove that:
 - the audit trail is legally defensible
 
 Signatures are applied **after all record data is finalized**, ensuring stability.
+
+---
+
+## Compliance Reports (Pro)
+
+AiTrace Pro can generate **compliance-ready audit reports** from an audit directory.
+
+Supported formats:
+- plain text (`compliance_report.txt`)
+- JSON (`compliance_report.json`)
+
+Reports summarize:
+- overall verification status
+- record and chain integrity
+- signature requirements and validity
+- number of files and records verified
+- time range covered by the audit trail
+- detection of post-decision tampering
+
+These reports are designed to be:
+- attached to regulatory filings
+- shared with legal or compliance teams
+- archived as formal audit evidence
 
 ---
 
