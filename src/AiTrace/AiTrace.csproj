@@ -10,8 +10,8 @@
     <Version>0.1.0-preview.4</Version>
 
     <!-- Ownership / metadata -->
-    <Authors>AiTrace.NET</Authors>
-    <Company>AiTrace.NET</Company>
+    <Authors>aitrace-dotnet</Authors>
+    <Company>aitrace-dotnet</Company>
 
     <Description>
       Audit &amp; proof layer for AI decisions in .NET.
