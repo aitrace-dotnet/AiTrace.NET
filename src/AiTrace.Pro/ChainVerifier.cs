@@ -12,10 +12,12 @@ public sealed class ChainVerifier
     };
 
     private readonly SignatureOptions _sig;
+    private readonly VerificationPolicy _policy;
 
-    public ChainVerifier(SignatureOptions? signatureOptions = null)
+    public ChainVerifier(SignatureOptions? signatureOptions = null, VerificationPolicy? policy = null)
     {
         _sig = signatureOptions ?? new SignatureOptions();
+        _policy = policy ?? VerificationPolicy.Relaxed();
     }
 
     public VerificationResult Verify(string auditDirectory)
@@ -39,7 +41,7 @@ public sealed class ChainVerifier
         }
 
         var files = Directory.GetFiles(auditDirectory, "*.json", SearchOption.AllDirectories)
-            .OrderBy(Path.GetFileName)
+            .OrderBy(Path.GetFileName) // stable, deterministic
             .ToArray();
 
         if (files.Length == 0)
@@ -51,7 +53,21 @@ public sealed class ChainVerifier
             );
         }
 
+        // ✅ Signature policy sanity check (strict mode)
+        // If signatures are required, we must have a SignatureService to verify them.
+        if (_policy.RequireSignatures && _sig.SignatureService is null)
+        {
+            return VerificationResult.Fail(
+                VerificationStatus.SignatureServiceMissing,
+                0,
+                "Signatures are required by policy but no SignatureService is configured."
+            );
+        }
+
         string? lastHash = null;
+
+        bool signatureChecked = false; // did we attempt verification?
+        bool signatureValid = true;     // remains true if no invalid signature is found
 
         for (int idx = 0; idx < files.Length; idx++)
         {
@@ -84,7 +100,7 @@ public sealed class ChainVerifier
                 );
             }
 
-            // 1) Hash check
+            // 1) Record hash integrity
             var expected = AuditHasher.ComputeRecordHash(record);
             if (!string.Equals(record.HashSha256, expected, StringComparison.OrdinalIgnoreCase))
             {
@@ -96,13 +112,28 @@ public sealed class ChainVerifier
                 );
             }
 
-            // 1.5) Signature check (if present)
+            // 2) Signature policy + signature verification
             var hasSignature =
                 !string.IsNullOrWhiteSpace(record.Signature) &&
                 !string.IsNullOrWhiteSpace(record.SignatureAlgorithm);
 
+            if (_policy.RequireSignatures && !hasSignature)
+            {
+                return VerificationResult.Fail(
+                    VerificationStatus.SignatureRequiredButMissing,
+                    idx,
+                    $"Signature required but missing in '{fileName}'.",
+                    fileName,
+                    signatureChecked: true,
+                    signatureValid: false
+                );
+            }
+
+            // If the record has a signature, verify it (even in relaxed mode)
             if (hasSignature)
             {
+                signatureChecked = true;
+
                 if (_sig.SignatureService is null)
                 {
                     return VerificationResult.Fail(
@@ -118,6 +149,8 @@ public sealed class ChainVerifier
                 var ok = _sig.SignatureService.Verify(record.HashSha256, record.Signature!);
                 if (!ok)
                 {
+                    signatureValid = false;
+
                     return VerificationResult.Fail(
                         VerificationStatus.SignatureInvalid,
                         idx,
@@ -129,32 +162,77 @@ public sealed class ChainVerifier
                 }
             }
 
-            // 2) Chain check (if PrevHashSha256 present)
-            if (idx > 0 && !string.IsNullOrWhiteSpace(record.PrevHashSha256))
+            // 3) Chain policy + chain check
+            if (idx > 0)
             {
-                if (!string.Equals(record.PrevHashSha256, lastHash, StringComparison.OrdinalIgnoreCase))
+                if (_policy.RequireChainIntegrity)
                 {
-                    return VerificationResult.Fail(
-                        VerificationStatus.ChainBroken,
-                        idx,
-                        $"Chain broken at '{fileName}'. PrevHashSha256={record.PrevHashSha256} but previous hash was {lastHash}.",
-                        fileName
-                    );
+                    if (string.IsNullOrWhiteSpace(record.PrevHashSha256))
+                    {
+                        return VerificationResult.Fail(
+                            VerificationStatus.ChainBroken,
+                            idx,
+                            $"Chain integrity required but PrevHashSha256 is missing in '{fileName}'.",
+                            fileName
+                        );
+                    }
+
+                    if (!string.Equals(record.PrevHashSha256, lastHash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return VerificationResult.Fail(
+                            VerificationStatus.ChainBroken,
+                            idx,
+                            $"Chain broken at '{fileName}'. PrevHashSha256={record.PrevHashSha256} but previous hash was {lastHash}.",
+                            fileName
+                        );
+                    }
+                }
+                else
+                {
+                    // relaxed: verify chain only if PrevHash is present
+                    if (!string.IsNullOrWhiteSpace(record.PrevHashSha256))
+                    {
+                        if (!string.Equals(record.PrevHashSha256, lastHash, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return VerificationResult.Fail(
+                                VerificationStatus.ChainBroken,
+                                idx,
+                                $"Chain broken at '{fileName}'. PrevHashSha256={record.PrevHashSha256} but previous hash was {lastHash}.",
+                                fileName
+                            );
+                        }
+                    }
                 }
             }
 
             lastHash = record.HashSha256;
         }
 
-        return VerificationResult.Ok();
+        // ✅ All good
+        // If signatures were required, consider them "checked"
+        if (_policy.RequireSignatures)
+        {
+            signatureChecked = true;
+            signatureValid = true;
+        }
+
+        return new VerificationResult
+        {
+            IsValid = true,
+            Status = VerificationStatus.Ok,
+            SignatureChecked = signatureChecked,
+            SignatureValid = signatureValid
+        };
     }
 
-    public ComplianceVerificationSummary VerifySummary(
-    string auditDirectory,
-    bool signatureRequired = false)
+    public ComplianceVerificationSummary VerifySummary(string auditDirectory, bool signatureRequired = false)
     {
-        // On appelle Verify() (ton moteur existant)
-        var result = Verify(auditDirectory);
+        // ✅ Policy override ONLY for summary/exports
+        var policy = signatureRequired
+            ? VerificationPolicy.Strict()
+            : _policy;
+
+        var result = new ChainVerifier(_sig, policy).Verify(auditDirectory);
 
         // Scope stats (best-effort)
         int filesVerified = 0;
@@ -178,11 +256,9 @@ public sealed class ChainVerifier
                     var record = JsonSerializer.Deserialize<AuditRecord>(json, JsonOptions);
                     if (record is null) continue;
 
-                    // range
                     if (firstUtc is null || record.TimestampUtc < firstUtc) firstUtc = record.TimestampUtc;
                     if (lastUtc is null || record.TimestampUtc > lastUtc) lastUtc = record.TimestampUtc;
 
-                    // signature presence
                     if (!string.IsNullOrWhiteSpace(record.Signature) &&
                         !string.IsNullOrWhiteSpace(record.SignatureAlgorithm))
                     {
@@ -191,12 +267,11 @@ public sealed class ChainVerifier
                 }
                 catch
                 {
-                    // ignore: Verify() already reports parse errors; this is best-effort scope
+                    // ignore: Verify() already returns exact errors; this is best-effort scope
                 }
             }
         }
 
-        // Build summary from result + scope
         return ComplianceSummaryBuilder.FromResult(
             result,
             filesVerified: filesVerified,
@@ -206,5 +281,4 @@ public sealed class ChainVerifier
             signatureRequired: signatureRequired
         );
     }
-
 }
