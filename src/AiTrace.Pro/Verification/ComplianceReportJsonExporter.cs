@@ -1,35 +1,35 @@
-﻿using System.Text;
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace AiTrace.Pro.Verification;
 
 public static class ComplianceReportJsonExporter
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true
-    };
-
     /// <summary>
-    /// Generates a compliance summary and writes it as JSON to disk.
+    /// Generates a compliance verification report (JSON) and writes it to disk.
     /// </summary>
     public static string WriteJsonReport(
         string auditDirectory,
         string outputPath,
         ChainVerifier verifier,
-        bool signatureRequired = true)
+        bool signatureRequired = true,
+        VerificationScope? scope = null)
     {
         if (verifier is null) throw new ArgumentNullException(nameof(verifier));
 
         var summary = verifier.VerifySummary(
             auditDirectory,
-            signatureRequired: signatureRequired
+            signatureRequired: signatureRequired,
+            scope: scope
         );
 
-        var json = JsonSerializer.Serialize(summary, JsonOptions);
-
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-        File.WriteAllText(outputPath, json, Encoding.UTF8);
+
+        var json = JsonSerializer.Serialize(summary, new JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+
+        File.WriteAllText(outputPath, json);
 
         return outputPath;
     }

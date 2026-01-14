@@ -20,14 +20,14 @@ public sealed class JsonAuditStore : IAuditStore
     {
         if (record is null) throw new ArgumentNullException(nameof(record));
 
-        // 1) Chain hashing: find previous hash
+        // 1) Chain hashing: find previous hash (audit files only)
         var prev = TryGetLastHash(_directory);
         record.PrevHashSha256 = prev;
 
         // 2) Recompute hash INCLUDING PrevHashSha256
         record.HashSha256 = AuditHasher.ComputeRecordHash(record);
 
-        // 3) One file per record: simple, robust, diffable
+        // 3) One file per record
         var fileName = $"{record.TimestampUtc:yyyyMMdd_HHmmss}_{record.Id}.json";
         var path = Path.Combine(_directory, fileName);
 
@@ -44,8 +44,17 @@ public sealed class JsonAuditStore : IAuditStore
     {
         if (!Directory.Exists(auditDir)) return null;
 
+        // ✅ IMPORTANT:
+        // Only consider audit JSON files (starting with YYYYMMDD...)
+        // This excludes compliance_report.json, reports/, etc.
         var lastFile = Directory.GetFiles(auditDir, "*.json", SearchOption.AllDirectories)
-            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .Select(f => new { Path = f, Name = Path.GetFileName(f) })
+            .Where(x =>
+                !string.IsNullOrWhiteSpace(x.Name) &&
+                char.IsDigit(x.Name[0]) // audit files start with date
+            )
+            .OrderByDescending(x => x.Name) // filename is chronological
+            .Select(x => x.Path)
             .FirstOrDefault();
 
         if (lastFile is null) return null;

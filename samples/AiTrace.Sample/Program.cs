@@ -39,6 +39,12 @@ var auditDir = Path.Combine(baseDir, "aitrace");
 Console.WriteLine("Logged audit record.");
 Console.WriteLine($"Audit directory: {auditDir}");
 
+// ---- Build verification scope (time range) ----
+// Example: verify last 7 days (UTC)
+var fromUtc = DateTimeOffset.UtcNow.AddDays(-7);
+var toUtc = DateTimeOffset.UtcNow;
+var scope = VerificationScope.Between(fromUtc, toUtc);
+
 // ---- Verify (integrity + signature) ----
 var publicKeyPem = File.ReadAllText(@"C:\temp\aitrace_public.pem");
 var sigOpts = new SignatureOptions
@@ -46,35 +52,64 @@ var sigOpts = new SignatureOptions
     SignatureService = new RsaAuditSignatureService(publicKeyPem)
 };
 
-var verifier = new ChainVerifier(sigOpts);
-var summary = verifier.VerifySummary(auditDir, signatureRequired: true);
+// ✅ Policy for regulators:
+// - signatures required
+// - chain required
+// - BUT allow verifying a time range that starts mid-directory (common in real audits)
+var strict = VerificationPolicy.Strict();
+
+// IMPORTANT: VerificationPolicy is a class, not a record -> no "with { }"
+var policy = new VerificationPolicy
+{
+    RequireSignatures = strict.RequireSignatures,
+    RequireChainIntegrity = strict.RequireChainIntegrity,
+    FailOnMissingFiles = strict.FailOnMissingFiles,
+
+    // new setting
+    AllowStartMidChain = true
+};
+
+var verifier = new ChainVerifier(sigOpts, policy);
+
+// ✅ Verify summary on the chosen scope
+var summary = verifier.VerifySummary(
+    auditDir,
+    signatureRequired: true,
+    scope: scope
+);
 
 Console.WriteLine(summary.IsValid
     ? "VERIFY OK (integrity + signature verified)"
     : $"VERIFY FAIL: {summary.Reason}");
 
 Console.WriteLine($"SUMMARY: Status={summary.Status}, Files={summary.FilesVerified}, Signature={summary.SignatureStatus}");
+Console.WriteLine($"SCOPE (UTC): {fromUtc:O} to {toUtc:O}");
 
-// ---- Export compliance report to disk ----
-var reportPath = Path.Combine(auditDir, "compliance_report.txt");
+// ---- Export compliance report to disk (scoped) ----
+// Put reports in a subfolder so they don't pollute audit root
+var reportsDir = Path.Combine(auditDir, "reports");
+Directory.CreateDirectory(reportsDir);
+
+var reportPath = Path.Combine(reportsDir, "compliance_report.txt");
 
 ComplianceReportExporter.WriteTextReport(
     auditDir,
     reportPath,
     verifier,
-    signatureRequired: true
+    signatureRequired: true,
+    scope: scope
 );
 
 Console.WriteLine($"Compliance report written to: {reportPath}");
 
-var jsonReportPath = Path.Combine(auditDir, "compliance_report.json");
+var jsonReportPath = Path.Combine(reportsDir, "compliance_report.json");
 
 ComplianceReportJsonExporter.WriteJsonReport(
     auditDir,
     jsonReportPath,
     verifier,
-    signatureRequired: true
+    signatureRequired: true,
+    scope: scope
 );
 
 Console.WriteLine($"Compliance JSON report written to: {jsonReportPath}");
-

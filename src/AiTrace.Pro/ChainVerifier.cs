@@ -1,5 +1,4 @@
 ﻿using System.Text.Json;
-using AiTrace;
 using AiTrace.Pro.Signing;
 
 namespace AiTrace.Pro.Verification;
@@ -41,8 +40,17 @@ public sealed class ChainVerifier
         }
 
         var files = Directory.GetFiles(auditDirectory, "*.json", SearchOption.AllDirectories)
-            .OrderBy(Path.GetFileName) // stable, deterministic
-            .ToArray();
+     .Select(f => new
+     {
+         Path = f,
+         Name = Path.GetFileName(f)
+     })
+     // On garde seulement les vrais audits horodatés (YYYYMMDD...)
+     .Where(x => !string.IsNullOrEmpty(x.Name) && char.IsDigit(x.Name[0]))
+     // Ordre déterministe = ordre chronologique
+     .OrderBy(x => x.Name)
+     .Select(x => x.Path)
+     .ToArray();
 
         if (files.Length == 0)
         {
@@ -53,8 +61,7 @@ public sealed class ChainVerifier
             );
         }
 
-        // ✅ Signature policy sanity check (strict mode)
-        // If signatures are required, we must have a SignatureService to verify them.
+        // If strict signatures are required, we must have a SignatureService
         if (_policy.RequireSignatures && _sig.SignatureService is null)
         {
             return VerificationResult.Fail(
@@ -66,8 +73,8 @@ public sealed class ChainVerifier
 
         string? lastHash = null;
 
-        bool signatureChecked = false; // did we attempt verification?
-        bool signatureValid = true;     // remains true if no invalid signature is found
+        bool signatureChecked = false;
+        bool signatureValid = true;
 
         for (int idx = 0; idx < files.Length; idx++)
         {
@@ -100,7 +107,7 @@ public sealed class ChainVerifier
                 );
             }
 
-            // 1) Record hash integrity
+            // 1) Hash check
             var expected = AuditHasher.ComputeRecordHash(record);
             if (!string.Equals(record.HashSha256, expected, StringComparison.OrdinalIgnoreCase))
             {
@@ -112,13 +119,16 @@ public sealed class ChainVerifier
                 );
             }
 
-            // 2) Signature policy + signature verification
+            // 2) Signature check (policy-aware)
             var hasSignature =
                 !string.IsNullOrWhiteSpace(record.Signature) &&
                 !string.IsNullOrWhiteSpace(record.SignatureAlgorithm);
 
             if (_policy.RequireSignatures && !hasSignature)
             {
+                signatureChecked = true;
+                signatureValid = false;
+
                 return VerificationResult.Fail(
                     VerificationStatus.SignatureRequiredButMissing,
                     idx,
@@ -129,13 +139,15 @@ public sealed class ChainVerifier
                 );
             }
 
-            // If the record has a signature, verify it (even in relaxed mode)
+            // If signature exists, verify it (even in relaxed mode)
             if (hasSignature)
             {
                 signatureChecked = true;
 
                 if (_sig.SignatureService is null)
                 {
+                    signatureValid = false;
+
                     return VerificationResult.Fail(
                         VerificationStatus.SignatureServiceMissing,
                         idx,
@@ -162,7 +174,7 @@ public sealed class ChainVerifier
                 }
             }
 
-            // 3) Chain policy + chain check
+            // 3) Chain check
             if (idx > 0)
             {
                 if (_policy.RequireChainIntegrity)
@@ -189,18 +201,16 @@ public sealed class ChainVerifier
                 }
                 else
                 {
-                    // relaxed: verify chain only if PrevHash is present
-                    if (!string.IsNullOrWhiteSpace(record.PrevHashSha256))
+                    // relaxed: verify chain only if PrevHash exists
+                    if (!string.IsNullOrWhiteSpace(record.PrevHashSha256) &&
+                        !string.Equals(record.PrevHashSha256, lastHash, StringComparison.OrdinalIgnoreCase))
                     {
-                        if (!string.Equals(record.PrevHashSha256, lastHash, StringComparison.OrdinalIgnoreCase))
-                        {
-                            return VerificationResult.Fail(
-                                VerificationStatus.ChainBroken,
-                                idx,
-                                $"Chain broken at '{fileName}'. PrevHashSha256={record.PrevHashSha256} but previous hash was {lastHash}.",
-                                fileName
-                            );
-                        }
+                        return VerificationResult.Fail(
+                            VerificationStatus.ChainBroken,
+                            idx,
+                            $"Chain broken at '{fileName}'. PrevHashSha256={record.PrevHashSha256} but previous hash was {lastHash}.",
+                            fileName
+                        );
                     }
                 }
             }
@@ -208,34 +218,29 @@ public sealed class ChainVerifier
             lastHash = record.HashSha256;
         }
 
-        // ✅ All good
-        // If signatures were required, consider them "checked"
-        if (_policy.RequireSignatures)
-        {
-            signatureChecked = true;
-            signatureValid = true;
-        }
-
         return new VerificationResult
         {
             IsValid = true,
             Status = VerificationStatus.Ok,
-            SignatureChecked = signatureChecked,
+            SignatureChecked = signatureChecked || _policy.RequireSignatures,
             SignatureValid = signatureValid
         };
     }
 
-    public ComplianceVerificationSummary VerifySummary(string auditDirectory, bool signatureRequired = false)
+    public ComplianceVerificationSummary VerifySummary(
+        string auditDirectory,
+        bool signatureRequired = false,
+        VerificationScope? scope = null)
     {
-        // ✅ Policy override ONLY for summary/exports
-        var policy = signatureRequired
-            ? VerificationPolicy.Strict()
-            : _policy;
+        scope ??= VerificationScope.All();
 
-        var result = new ChainVerifier(_sig, policy).Verify(auditDirectory);
+        // Policy override ONLY for summary/export
+        var policyToUse = signatureRequired ? VerificationPolicy.Strict() : _policy;
+
+        var result = new ChainVerifier(_sig, policyToUse).Verify(auditDirectory);
 
         // Scope stats (best-effort)
-        int filesVerified = 0;
+        int filesCount = 0;
         DateTimeOffset? firstUtc = null;
         DateTimeOffset? lastUtc = null;
         bool anySignaturePresent = false;
@@ -243,10 +248,17 @@ public sealed class ChainVerifier
         if (Directory.Exists(auditDirectory))
         {
             var files = Directory.GetFiles(auditDirectory, "*.json", SearchOption.AllDirectories)
-                .OrderBy(Path.GetFileName)
-                .ToArray();
-
-            filesVerified = files.Length;
+      .Select(f => new
+      {
+          Path = f,
+          Name = Path.GetFileName(f)
+      })
+      // On garde seulement les vrais audits horodatés (YYYYMMDD...)
+      .Where(x => !string.IsNullOrEmpty(x.Name) && char.IsDigit(x.Name[0]))
+      // Ordre déterministe = ordre chronologique
+      .OrderBy(x => x.Name)
+      .Select(x => x.Path)
+      .ToArray();
 
             foreach (var f in files)
             {
@@ -255,6 +267,10 @@ public sealed class ChainVerifier
                     var json = File.ReadAllText(f);
                     var record = JsonSerializer.Deserialize<AuditRecord>(json, JsonOptions);
                     if (record is null) continue;
+
+                    if (!scope.Includes(record)) continue;
+
+                    filesCount++;
 
                     if (firstUtc is null || record.TimestampUtc < firstUtc) firstUtc = record.TimestampUtc;
                     if (lastUtc is null || record.TimestampUtc > lastUtc) lastUtc = record.TimestampUtc;
@@ -267,14 +283,14 @@ public sealed class ChainVerifier
                 }
                 catch
                 {
-                    // ignore: Verify() already returns exact errors; this is best-effort scope
+                    // ignore; Verify() already reports parse errors
                 }
             }
         }
 
         return ComplianceSummaryBuilder.FromResult(
             result,
-            filesVerified: filesVerified,
+            filesVerified: filesCount,
             firstUtc: firstUtc,
             lastUtc: lastUtc,
             anySignaturePresent: anySignaturePresent,

@@ -11,13 +11,15 @@ public static class ComplianceReportExporter
         string auditDirectory,
         string outputPath,
         ChainVerifier verifier,
-        bool signatureRequired = true)
+        bool signatureRequired = true,
+        VerificationScope? scope = null)
     {
         if (verifier is null) throw new ArgumentNullException(nameof(verifier));
 
         var summary = verifier.VerifySummary(
             auditDirectory,
-            signatureRequired: signatureRequired
+            signatureRequired: signatureRequired,
+            scope: scope
         );
 
         var report = ComplianceReportWriter.ToTextReport(summary);

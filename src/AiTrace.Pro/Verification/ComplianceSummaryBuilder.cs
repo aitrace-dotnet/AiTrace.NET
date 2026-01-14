@@ -2,30 +2,44 @@
 
 public static class ComplianceSummaryBuilder
 {
-    /// <summary>
-    /// Builds a regulator-friendly summary from the low-level VerificationResult.
-    /// Optionally provide additional scope info (files/time range) if your verifier collects it.
-    /// </summary>
     public static ComplianceVerificationSummary FromResult(
-        VerificationResult r,
-        int filesVerified = 0,
-        DateTimeOffset? firstUtc = null,
-        DateTimeOffset? lastUtc = null,
-        bool anySignaturePresent = false,
-        bool signatureRequired = false)
+        VerificationResult result,
+        int filesVerified,
+        DateTimeOffset? firstUtc,
+        DateTimeOffset? lastUtc,
+        bool anySignaturePresent,
+        bool signatureRequired)
     {
-        if (r is null) throw new ArgumentNullException(nameof(r));
+        var signatureStatus = SignatureStatus.NotChecked;
+
+        if (signatureRequired)
+        {
+            // If policy requires signatures, result must have checked them.
+            signatureStatus = result.IsValid ? SignatureStatus.Valid : SignatureStatus.Invalid;
+            if (!anySignaturePresent)
+                signatureStatus = SignatureStatus.Missing;
+        }
+        else
+        {
+            // If not required, we only label Valid/Invalid if we actually checked at least one.
+            if (result.SignatureChecked)
+                signatureStatus = result.SignatureValid ? SignatureStatus.Valid : SignatureStatus.Invalid;
+        }
+
+        var integrityOk = result.Status != VerificationStatus.HashMismatch && result.Status != VerificationStatus.ParseError;
+        var chainOk = result.Status != VerificationStatus.ChainBroken;
 
         return new ComplianceVerificationSummary
         {
-            Status = r.Status,
+            Status = result.Status,
+            IsValid = result.IsValid,
 
-            IntegrityVerified = r.Status != VerificationStatus.HashMismatch && r.Status != VerificationStatus.ParseError,
-            ChainVerified = r.Status != VerificationStatus.ChainBroken,
+            IntegrityVerified = result.IsValid || integrityOk,
+            ChainVerified = result.IsValid || chainOk,
 
             AnySignaturePresent = anySignaturePresent,
             SignatureRequired = signatureRequired,
-            SignatureStatus = MapSignatureStatus(r, anySignaturePresent, signatureRequired),
+            SignatureStatus = signatureStatus,
 
             FilesVerified = filesVerified,
             RecordsVerified = filesVerified,
@@ -33,29 +47,9 @@ public static class ComplianceSummaryBuilder
             FirstTimestampUtc = firstUtc,
             LastTimestampUtc = lastUtc,
 
-            FailedIndex = r.FailedIndex,
-            FailedFileName = r.FileName,
-            Reason = r.Reason
-        };
-    }
-
-    private static SignatureCheckStatus MapSignatureStatus(
-        VerificationResult r,
-        bool anySignaturePresent,
-        bool signatureRequired)
-    {
-        // If verifier returned a signature-related status, reflect it.
-        return r.Status switch
-        {
-            VerificationStatus.SignatureInvalid => SignatureCheckStatus.Invalid,
-            VerificationStatus.SignatureServiceMissing => SignatureCheckStatus.MissingService,
-            VerificationStatus.SignatureNotPresent => SignatureCheckStatus.NotPresent,
-            VerificationStatus.SignatureRequiredButMissing => SignatureCheckStatus.RequiredButMissing,
-            _ => r.SignatureChecked
-                ? (r.SignatureValid ? SignatureCheckStatus.Valid : SignatureCheckStatus.Invalid)
-                : (!anySignaturePresent
-                    ? (signatureRequired ? SignatureCheckStatus.RequiredButMissing : SignatureCheckStatus.NotPresent)
-                    : SignatureCheckStatus.NotChecked)
+            FailedIndex = result.FailedIndex,
+            FailedFileName = result.FileName,
+            Reason = result.Reason
         };
     }
 }

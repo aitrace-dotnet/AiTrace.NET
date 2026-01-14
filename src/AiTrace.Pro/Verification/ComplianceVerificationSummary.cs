@@ -1,42 +1,35 @@
 ﻿namespace AiTrace.Pro.Verification;
 
-public enum SignatureCheckStatus
+public enum SignatureStatus
 {
     NotChecked = 0,
-    Valid,
-    Invalid,
-    NotPresent,
-    MissingService,
-    RequiredButMissing
+    Valid = 1,
+    Invalid = 2,
+    Missing = 3
 }
 
 /// <summary>
-/// Regulator-friendly summary built from low-level verification.
-/// This is what you can export/print/share.
+/// High-level compliance-oriented summary (for reports/exports).
 /// </summary>
 public sealed class ComplianceVerificationSummary
 {
     public VerificationStatus Status { get; init; } = VerificationStatus.Ok;
 
-    public bool IsValid => Status == VerificationStatus.Ok;
+    public bool IsValid { get; init; }
 
-    // Integrity proof
-    public bool IntegrityVerified { get; init; }   // Hashes verified for all records
-    public bool ChainVerified { get; init; }       // PrevHashSha256 chain consistent (when applicable)
+    public bool IntegrityVerified { get; init; }
+    public bool ChainVerified { get; init; }
 
-    // Signature proof (Pro)
     public bool AnySignaturePresent { get; init; }
     public bool SignatureRequired { get; init; }
-    public SignatureCheckStatus SignatureStatus { get; init; } = SignatureCheckStatus.NotChecked;
+    public SignatureStatus SignatureStatus { get; init; } = SignatureStatus.NotChecked;
 
-    // Scope (useful to a regulator)
     public int FilesVerified { get; init; }
-    public int RecordsVerified { get; init; } // same as FilesVerified for JSON store
+    public int RecordsVerified { get; init; }
 
     public DateTimeOffset? FirstTimestampUtc { get; init; }
     public DateTimeOffset? LastTimestampUtc { get; init; }
 
-    // Failure details
     public int? FailedIndex { get; init; }
     public string? FailedFileName { get; init; }
     public string? Reason { get; init; }
