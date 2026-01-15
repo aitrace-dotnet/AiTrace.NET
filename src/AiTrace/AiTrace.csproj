@@ -7,7 +7,7 @@
 
     <!-- Package identity -->
     <PackageId>AiTrace</PackageId>
-    <Version>0.1.0-preview.4</Version>
+    <Version>0.1.0-preview.5</Version>
 
     <!-- Ownership / metadata -->
     <Authors>aitrace-dotnet</Authors>

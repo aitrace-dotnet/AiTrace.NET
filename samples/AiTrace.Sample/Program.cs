@@ -1,7 +1,14 @@
 ﻿using AiTrace;
+using AiTrace.Pro.Licensing;
 using AiTrace.Pro.Signing;
 using AiTrace.Pro.Stores;
 using AiTrace.Pro.Verification;
+
+// ==============================
+// DEV / DEMO ONLY
+// ==============================
+LicenseGuard.Mode = LicenseMode.Disabled;
+// (en Release, tu enlèves cette ligne ou tu ne la mets jamais)
 
 // ---- Configure AiTrace (Pro signing store) ----
 AiTrace.AiTrace.Configure(o =>

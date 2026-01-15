@@ -2,12 +2,25 @@
 
 public static class LicenseGuard
 {
+    /// <summary>
+    /// Global licensing mode. Default:
+    /// - DEBUG  => Disabled
+    /// - RELEASE => Enforced
+    /// </summary>
+    public static LicenseMode Mode { get; set; } =
+#if DEBUG
+        LicenseMode.Disabled;
+#else
+        LicenseMode.Enforced;
+#endif
 
+    /// <summary>
+    /// Ensures AiTrace.Pro is licensed depending on current LicenseMode.
+    /// </summary>
     public static void EnsureLicensed()
     {
-        #if DEBUG
+        if (Mode == LicenseMode.Disabled)
             return;
-        #endif
 
         var raw = LicenseLoader.LoadRawLicense();
 
