@@ -77,6 +77,7 @@ Audit trails can be verified programmatically to detect:
 Verification produces:
 - a structured machine-readable result
 - a human-readable compliance report summarizing integrity and authenticity
+- Supports strict verification policies, time-scoped audits, and compliance-ready reports (TXT / JSON).
 
 ---
 
