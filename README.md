@@ -59,6 +59,82 @@ This creates an **immutable JSON audit record** containing:
 
 ---
 
+## API (Local)
+
+A minimal API is included in the solution (`AiTrace.Api`) for testing audit logging and verification via HTTP.
+
+### Configure
+
+Set your keys and audit folder in `AiTrace.Api/appsettings.json`:
+
+~~~json
+{
+  "AiTraceApi": {
+    "AuditRoot": "aitrace",
+    "PrivateKeyPath": "C:\\temp\\aitrace_private.pem",
+    "PublicKeyPath": "C:\\temp\\aitrace_public.pem"
+  }
+}
+~~~
+
+### Run
+
+~~~bash
+cd AiTrace.Api
+dotnet run
+~~~
+
+Then open Swagger:
+
+- `https://localhost:7266/swagger`
+- or `http://localhost:5095/swagger` (depends on your launchSettings)
+
+### Endpoints
+
+- `POST /api/decisions` — log an audit record
+- `POST /api/verify` — verify integrity/signatures and optionally export reports
+- `GET /api/reports/text` — get latest text report
+- `GET /api/reports/json` — get latest JSON report
+
+Example request body for `POST /api/decisions`:
+
+~~~json
+{
+  "prompt": "Explain what an audit trail is.",
+  "output": "An audit trail is a tamper-evident record of actions.",
+  "model": "demo-model",
+  "userId": "user-123",
+  "metadata": {
+    "source": "swagger"
+  }
+}
+~~~
+
+Example request body for `POST /api/verify`:
+
+~~~json
+{
+  "exportReports": true,
+  "policy": {
+    "requireSignatures": true,
+    "requireChainIntegrity": true,
+    "failOnMissingFiles": true,
+    "allowStartMidChain": true
+  },
+  "scope": {
+    "fromUtc": "2026-01-07T00:00:00Z",
+    "toUtc": "2026-01-14T23:59:59Z"
+  }
+}
+~~~
+
+Reports are written under:
+
+- `./aitrace/reports/compliance_report.txt`
+- `./aitrace/reports/compliance_report.json`
+
+---
+
 ## Verification & Integrity
 
 AiTrace audit records are designed to be **verifiable after the fact**.
@@ -77,7 +153,7 @@ Audit trails can be verified programmatically to detect:
 Verification produces:
 - a structured machine-readable result
 - a human-readable compliance report summarizing integrity and authenticity
-- Supports strict verification policies, time-scoped audits, and compliance-ready reports (TXT / JSON).
+- supports strict verification policies, time-scoped audits, and compliance-ready reports (TXT / JSON)
 
 ---
 
