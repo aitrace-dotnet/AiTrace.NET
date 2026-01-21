@@ -26,8 +26,10 @@ public static class LicenseGuard
 
         if (raw is null)
             throw new InvalidOperationException(
-                "AiTrace.Pro requires a license. " +
-                "Set env var AITRACE_PRO_LICENSE or place 'aitrace.license' next to your app.");
+                "AiTrace.Pro requires a valid license for production or compliance usage. " +
+                "Forking or modifying the source code does not grant compliance guarantees. " +
+                "See https://github.com/aitrace-dotnet/AiTrace.NET for licensing details."
+            );
 
         if (!LicenseValidator.TryValidate(raw, out var _, out var reason))
             throw new InvalidOperationException("AiTrace.Pro license is invalid: " + reason);

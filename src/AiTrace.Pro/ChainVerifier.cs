@@ -40,17 +40,17 @@ public sealed class ChainVerifier
         }
 
         var files = Directory.GetFiles(auditDirectory, "*.json", SearchOption.AllDirectories)
-     .Select(f => new
-     {
-         Path = f,
-         Name = Path.GetFileName(f)
-     })
-     // On garde seulement les vrais audits horodatés (YYYYMMDD...)
-     .Where(x => !string.IsNullOrEmpty(x.Name) && char.IsDigit(x.Name[0]))
-     // Ordre déterministe = ordre chronologique
-     .OrderBy(x => x.Name)
-     .Select(x => x.Path)
-     .ToArray();
+            .Select(f => new
+            {
+                Path = f,
+                Name = Path.GetFileName(f)
+            })
+            // Keep only "real" audit files (timestamp prefix YYYYMMDD...)
+            .Where(x => !string.IsNullOrEmpty(x.Name) && char.IsDigit(x.Name[0]))
+            // Deterministic order (chronological because of file naming)
+            .OrderBy(x => x.Name)
+            .Select(x => x.Path)
+            .ToArray();
 
         if (files.Length == 0)
         {
@@ -158,7 +158,26 @@ public sealed class ChainVerifier
                     );
                 }
 
-                var ok = _sig.SignatureService.Verify(record.HashSha256, record.Signature!);
+                // ✅ FIX: never crash on malformed base64 / crypto edge cases
+                bool ok;
+                try
+                {
+                    ok = _sig.SignatureService.Verify(record.HashSha256 ?? "", record.Signature!);
+                }
+                catch (Exception ex)
+                {
+                    signatureValid = false;
+
+                    return VerificationResult.Fail(
+                        VerificationStatus.SignatureInvalid,
+                        idx,
+                        $"Signature verification threw in '{fileName}': {ex.GetType().Name}.",
+                        fileName,
+                        signatureChecked: true,
+                        signatureValid: false
+                    );
+                }
+
                 if (!ok)
                 {
                     signatureValid = false;
@@ -235,7 +254,15 @@ public sealed class ChainVerifier
         scope ??= VerificationScope.All();
 
         // Policy override ONLY for summary/export
-        var policyToUse = signatureRequired ? VerificationPolicy.Strict() : _policy;
+        var policyToUse = signatureRequired
+            ? new VerificationPolicy
+            {
+                RequireSignatures = true,
+                RequireChainIntegrity = _policy.RequireChainIntegrity,
+                FailOnMissingFiles = _policy.FailOnMissingFiles,
+                AllowStartMidChain = _policy.AllowStartMidChain
+            }
+            : _policy;
 
         var result = new ChainVerifier(_sig, policyToUse).Verify(auditDirectory);
 
@@ -248,17 +275,15 @@ public sealed class ChainVerifier
         if (Directory.Exists(auditDirectory))
         {
             var files = Directory.GetFiles(auditDirectory, "*.json", SearchOption.AllDirectories)
-      .Select(f => new
-      {
-          Path = f,
-          Name = Path.GetFileName(f)
-      })
-      // On garde seulement les vrais audits horodatés (YYYYMMDD...)
-      .Where(x => !string.IsNullOrEmpty(x.Name) && char.IsDigit(x.Name[0]))
-      // Ordre déterministe = ordre chronologique
-      .OrderBy(x => x.Name)
-      .Select(x => x.Path)
-      .ToArray();
+                .Select(f => new
+                {
+                    Path = f,
+                    Name = Path.GetFileName(f)
+                })
+                .Where(x => !string.IsNullOrEmpty(x.Name) && char.IsDigit(x.Name[0]))
+                .OrderBy(x => x.Name)
+                .Select(x => x.Path)
+                .ToArray();
 
             foreach (var f in files)
             {
@@ -268,7 +293,8 @@ public sealed class ChainVerifier
                     var record = JsonSerializer.Deserialize<AuditRecord>(json, JsonOptions);
                     if (record is null) continue;
 
-                    if (!scope.Includes(record)) continue;
+                    // ✅ FIX: scope includes timestamp
+                    if (!scope.Includes(record.TimestampUtc)) continue;
 
                     filesCount++;
 

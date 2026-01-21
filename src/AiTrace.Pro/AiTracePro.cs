@@ -147,4 +147,113 @@ public static class AiTracePro
         var auditDir = Path.Combine(AppContext.BaseDirectory, "aitrace");
         return VerifyRegulatorDefault(auditDir);
     }
+
+    // ============================================================
+    // EVIDENCE EXPORT (NEW)
+    // ============================================================
+
+    public static EvidenceExportResult ExportEvidence(
+        string sourceAuditDirectory,
+        ChainVerifier verifier,
+        EvidenceExportOptions options)
+    {
+        LicenseGuard.EnsureLicensed();
+
+        if (string.IsNullOrWhiteSpace(sourceAuditDirectory))
+            throw new ArgumentNullException(nameof(sourceAuditDirectory));
+
+        if (verifier is null)
+            throw new ArgumentNullException(nameof(verifier));
+
+        if (options is null)
+            throw new ArgumentNullException(nameof(options));
+
+        return EvidenceExporter.Export(
+            sourceAuditDirectory: sourceAuditDirectory,
+            verifier: verifier,
+            options: options
+        );
+    }
+
+    /// <summary>
+    /// Convenience overload: builds the verifier from a public key PEM path.
+    /// </summary>
+    public static EvidenceExportResult ExportEvidenceWithPublicKeyPath(
+        string sourceAuditDirectory,
+        string publicKeyPemPath,
+        EvidenceExportOptions options)
+    {
+        LicenseGuard.EnsureLicensed();
+
+        if (string.IsNullOrWhiteSpace(publicKeyPemPath))
+            throw new ArgumentNullException(nameof(publicKeyPemPath));
+
+        if (!File.Exists(publicKeyPemPath))
+            throw new InvalidOperationException($"Public key file not found: {publicKeyPemPath}");
+
+        var publicKeyPem = File.ReadAllText(publicKeyPemPath);
+
+        var effectiveOptions = options.WithPolicyFallback(VerificationPolicy.Strict());
+
+        var sigOpts = new SignatureOptions
+        {
+            SignatureService = new RsaAuditSignatureService(publicKeyPem)
+        };
+
+        var verifier = new ChainVerifier(sigOpts, effectiveOptions.Policy);
+
+        return ExportEvidence(
+            sourceAuditDirectory: sourceAuditDirectory,
+            verifier: verifier,
+            options: effectiveOptions
+        );
+    }
+
+    /// <summary>
+    /// Regulator-grade evidence export convenience.
+    /// Forces Strict policy WITHOUT mutating caller options.
+    /// </summary>
+    public static EvidenceExportResult ExportEvidenceRegulatorDefault(
+        string sourceAuditDirectory,
+        EvidenceExportOptions options)
+    {
+        LicenseGuard.EnsureLicensed();
+
+        if (options is null)
+            throw new ArgumentNullException(nameof(options));
+
+        var publicKeyPath = Path.Combine(AppContext.BaseDirectory, "aitrace_public.pem");
+
+        if (!File.Exists(publicKeyPath))
+            throw new InvalidOperationException($"Public key file not found: {publicKeyPath}");
+
+        return ExportEvidenceWithPublicKeyPath(
+            sourceAuditDirectory: sourceAuditDirectory,
+            publicKeyPemPath: publicKeyPath,
+            options: options
+        );
+    }
+
+    // ============================================================
+    // INTERNAL HELPERS
+    // ============================================================
+
+    private static EvidenceExportOptions WithPolicyFallback(
+        this EvidenceExportOptions options,
+        VerificationPolicy fallback)
+    {
+        if (options.Policy is not null)
+            return options;
+
+        return new EvidenceExportOptions
+        {
+            OutputDirectory = options.OutputDirectory,
+            AuditFolderName = options.AuditFolderName,
+            FailIfOutputNotEmpty = options.FailIfOutputNotEmpty,
+            WriteManifest = options.WriteManifest,
+            PublicKeyPemPath = options.PublicKeyPemPath,
+            Scope = options.Scope,
+            Policy = fallback
+        };
+    }
 }
