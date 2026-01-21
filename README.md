@@ -333,6 +333,40 @@ AiTrace.NET focuses on **truth**, not opinions.
 
 ---
 
+## Licensing & Usage
+
+AiTrace.NET is released under the **MIT License**.
+
+This means you may:
+- use the source code freely
+- modify and fork the project
+- use AiTrace.NET for internal, experimental, or non-regulated use cases
+
+### AiTrace.Pro (Compliance & Production Usage)
+
+Certain features are part of **AiTrace.Pro**, including:
+- cryptographic signature verification
+- strict verification policies
+- compliance report generation (TXT / JSON)
+- license enforcement mechanisms
+
+While the source code of AiTrace.Pro is visible, **production or compliance-grade usage requires a valid license**.
+
+Forking, modifying, or reimplementing AiTrace.Pro:
+- does **not** grant official compliance guarantees
+- does **not** provide legal or regulatory assurances
+- is **not** equivalent to using the official AiTrace.Pro package
+
+AiTrace.Pro is designed for organizations that require:
+- verifiable audit trails
+- non-repudiation
+- legally defensible evidence
+- long-term maintenance and compatibility
+
+If you need compliance-grade verification, use the official AiTrace.Pro package with a valid license.
+
+---
+
 ## Roadmap
 
 - Prompt versioning
