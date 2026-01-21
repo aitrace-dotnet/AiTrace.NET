@@ -219,6 +219,82 @@ These reports are designed to be:
 
 ---
 
+## Evidence Bundles (Pro)
+
+AiTrace Pro can export a **portable, regulator-grade evidence bundle** from an audit directory.
+
+An evidence bundle is a **self-contained, immutable folder** designed to be:
+- archived
+- shared with auditors or regulators
+- attached to legal or compliance files
+- independently re-verified outside the original system
+
+It represents a **point-in-time cryptographic snapshot** of an AI audit trail.
+
+### Evidence Bundle Structure
+
+evidence_YYYYMMDD_HHMMSS/ ├── audit/ │   ├── 20260121_185311116_xxxxx.json │   └── ... ├── compliance_report.txt ├── compliance_report.json ├── README.txt └── manifest.txt
+
+Included elements:
+- **audit/** — scoped, immutable audit JSON records
+- **compliance_report.txt** — human-readable verification report
+- **compliance_report.json** — machine-readable verification result
+- **README.txt** — explanation for auditors and legal teams
+- **manifest.txt** — list of included audit files
+- **public_key.pem** *(optional)* — public key used for signature verification
+
+### Exporting an Evidence Bundle (Pro)
+
+~~~csharp
+using AiTrace.Pro;
+using AiTrace.Pro.Verification;
+
+var options = new EvidenceExportOptions
+{
+    OutputDirectory = "evidence_bundle",
+    Scope = VerificationScope.All(),
+    PublicKeyPemPath = "aitrace_public.pem",
+    FailIfOutputNotEmpty = true,
+    WriteManifest = true
+};
+
+var result = AiTracePro.ExportEvidence(
+    sourceAuditDirectory: "aitrace",
+    verifier: verifier,
+    options: options
+);
+
+Console.WriteLine($"Evidence bundle written to: {result.OutputDirectory}");
+~~~
+
+This operation:
+1. Verifies hashes, chain integrity, and signatures
+2. Fails immediately if verification does not pass
+3. Copies only scoped audit records
+4. Generates compliance reports (TXT / JSON)
+5. Produces a **portable, tamper-evident evidence bundle**
+
+### Independent Re-Verification
+
+An exported evidence bundle can be verified **without access to the original application or system**.
+
+Any modification to:
+- audit content
+- hashes
+- hash chain (`PrevHashSha256`)
+- signatures
+- file order
+
+will be **detected deterministically** during verification.
+
+This enables:
+- external audits
+- regulator-led investigations
+- post-incident forensic analysis
+- long-term evidence archival
+
+---
+
 ## AiTrace for Compliance & Legal Teams
 
 AiTrace provides a **cryptographic proof layer** for automated decisions.
