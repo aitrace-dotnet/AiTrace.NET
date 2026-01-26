@@ -87,51 +87,14 @@ dotnet run
 Then open Swagger:
 
 - `https://localhost:7266/swagger`
-- or `http://localhost:5095/swagger` (depends on your launchSettings)
+- or `http://localhost:5095/swagger`
 
 ### Endpoints
 
-- `POST /api/decisions` — log an audit record
-- `POST /api/verify` — verify integrity/signatures and optionally export reports
-- `GET /api/reports/text` — get latest text report
-- `GET /api/reports/json` — get latest JSON report
-
-Example request body for `POST /api/decisions`:
-
-~~~json
-{
-  "prompt": "Explain what an audit trail is.",
-  "output": "An audit trail is a tamper-evident record of actions.",
-  "model": "demo-model",
-  "userId": "user-123",
-  "metadata": {
-    "source": "swagger"
-  }
-}
-~~~
-
-Example request body for `POST /api/verify`:
-
-~~~json
-{
-  "exportReports": true,
-  "policy": {
-    "requireSignatures": true,
-    "requireChainIntegrity": true,
-    "failOnMissingFiles": true,
-    "allowStartMidChain": true
-  },
-  "scope": {
-    "fromUtc": "2026-01-07T00:00:00Z",
-    "toUtc": "2026-01-14T23:59:59Z"
-  }
-}
-~~~
-
-Reports are written under:
-
-- `./aitrace/reports/compliance_report.txt`
-- `./aitrace/reports/compliance_report.json`
+- `POST /api/decisions` — log an audit record  
+- `POST /api/verify` — verify integrity/signatures and optionally export reports  
+- `GET /api/reports/text` — get latest text report  
+- `GET /api/reports/json` — get latest JSON report  
 
 ---
 
@@ -153,28 +116,6 @@ Audit trails can be verified programmatically to detect:
 Verification produces:
 - a structured machine-readable result
 - a human-readable compliance report summarizing integrity and authenticity
-- supports strict verification policies, time-scoped audits, and compliance-ready reports (TXT / JSON)
-
----
-
-## VerificationStatus (Pro)
-
-When verifying an audit trail, AiTrace returns a structured status indicating the outcome.
-
-Typical statuses include:
-- `Ok`
-- `HashMismatch`
-- `ChainBroken`
-- `SignatureInvalid`
-- `SignatureServiceMissing`
-- `SignatureRequiredButMissing`
-- `NoFiles`
-- `ParseError`
-
-This allows verification results to be:
-- deterministic
-- audit-friendly
-- suitable for automation, reporting, or compliance workflows
 
 ---
 
@@ -187,12 +128,7 @@ When enabled:
 - signatures provide **non-repudiation**
 - records can be independently verified using a public key
 
-This enables organizations to prove that:
-- a record was produced by a trusted system
-- the record has not been altered
-- the audit trail is legally defensible
-
-Signatures are applied **after all record data is finalized**, ensuring stability.
+Signatures are applied **after all record data is finalized**.
 
 ---
 
@@ -201,21 +137,15 @@ Signatures are applied **after all record data is finalized**, ensuring stabilit
 AiTrace Pro can generate **compliance-ready audit reports** from an audit directory.
 
 Supported formats:
-- plain text (`compliance_report.txt`)
-- JSON (`compliance_report.json`)
+- `compliance_report.txt`
+- `compliance_report.json`
 
 Reports summarize:
-- overall verification status
+- verification status
 - record and chain integrity
 - signature requirements and validity
-- number of files and records verified
-- time range covered by the audit trail
-- detection of post-decision tampering
-
-These reports are designed to be:
-- attached to regulatory filings
-- shared with legal or compliance teams
-- archived as formal audit evidence
+- number of files verified
+- time range covered
 
 ---
 
@@ -223,75 +153,64 @@ These reports are designed to be:
 
 AiTrace Pro can export a **portable, regulator-grade evidence bundle** from an audit directory.
 
-An evidence bundle is a **self-contained, immutable folder** designed to be:
-- archived
-- shared with auditors or regulators
-- attached to legal or compliance files
-- independently re-verified outside the original system
-
-It represents a **point-in-time cryptographic snapshot** of an AI audit trail.
+An evidence bundle is a **self-contained, immutable snapshot** of an AI audit trail.
 
 ### Evidence Bundle Structure
 
-evidence_YYYYMMDD_HHMMSS/ ├── audit/ │   ├── 20260121_185311116_xxxxx.json │   └── ... ├── compliance_report.txt ├── compliance_report.json ├── README.txt └── manifest.txt
+evidence_YYYYMMDD_HHMMSS/
+├── audit/
+│   ├── 20260121_185311116_xxxxx.json
+│   └── ...
+├── compliance_report.txt
+├── compliance_report.json
+├── README.txt
+├── manifest.txt
+├── public_key.pem   (optional)
+└── seal.json
 
-Included elements:
-- **audit/** — scoped, immutable audit JSON records
-- **compliance_report.txt** — human-readable verification report
-- **compliance_report.json** — machine-readable verification result
-- **README.txt** — explanation for auditors and legal teams
-- **manifest.txt** — list of included audit files
-- **public_key.pem** *(optional)* — public key used for signature verification
+---
 
-### Exporting an Evidence Bundle (Pro)
+## Evidence Bundle Sealing (Pro)
+
+AiTrace Pro supports **cryptographic sealing of evidence bundles**.
+
+After an evidence bundle is exported, the entire folder can be sealed using a deterministic SHA-256 process.
+
+### What is `seal.json`?
+
+`seal.json` contains:
+- a SHA-256 hash for **every file** in the bundle
+- a deterministic **global bundle hash**
+- timestamp and algorithm metadata
+
+Any modification to the bundle will be detected.
+
+This allows the bundle to serve as a point-in-time cryptographic evidence snapshot.
+
+### Seal an Evidence Bundle
 
 ~~~csharp
-using AiTrace.Pro;
-using AiTrace.Pro.Verification;
+using AiTrace.Pro.Verification.Evidence;
 
-var options = new EvidenceExportOptions
-{
-    OutputDirectory = "evidence_bundle",
-    Scope = VerificationScope.All(),
-    PublicKeyPemPath = "aitrace_public.pem",
-    FailIfOutputNotEmpty = true,
-    WriteManifest = true
-};
-
-var result = AiTracePro.ExportEvidence(
-    sourceAuditDirectory: "aitrace",
-    verifier: verifier,
-    options: options
-);
-
-Console.WriteLine($"Evidence bundle written to: {result.OutputDirectory}");
+var sealPath = EvidenceBundleSealer.WriteSeal(evidenceBundleDirectory);
+Console.WriteLine($"Seal written to: {sealPath}");
 ~~~
 
-This operation:
-1. Verifies hashes, chain integrity, and signatures
-2. Fails immediately if verification does not pass
-3. Copies only scoped audit records
-4. Generates compliance reports (TXT / JSON)
-5. Produces a **portable, tamper-evident evidence bundle**
+### Verify a Sealed Bundle (Independent Check)
 
-### Independent Re-Verification
+~~~csharp
+var (ok, reason) = EvidenceBundleSealer.VerifySeal(evidenceBundleDirectory);
 
-An exported evidence bundle can be verified **without access to the original application or system**.
-
-Any modification to:
-- audit content
-- hashes
-- hash chain (`PrevHashSha256`)
-- signatures
-- file order
-
-will be **detected deterministically** during verification.
+Console.WriteLine(ok
+    ? "Seal OK: bundle is intact"
+    : $"Seal FAIL: {reason}");
+~~~
 
 This enables:
-- external audits
-- regulator-led investigations
-- post-incident forensic analysis
-- long-term evidence archival
+- offline verification
+- third-party audits
+- regulator review
+- long-term evidence archiving
 
 ---
 
@@ -300,112 +219,12 @@ This enables:
 AiTrace provides a **cryptographic proof layer** for automated decisions.
 
 It enables organizations to prove, **after the fact**, that:
-- a specific automated decision occurred at a specific time
-- the exact inputs and outputs involved are known
-- the record has not been altered since it was created
+- a specific decision occurred
+- at a specific time
+- with specific inputs and outputs
+- without later alteration
 
-AiTrace is designed for **post-incident analysis**, audits, and regulatory inquiries.  
-It does **not** explain or justify decisions — it proves **what happened**.
-
-Typical use cases include:
-- contested automated decisions
-- regulatory or compliance audits
-- internal investigations
-- legal or risk documentation
-
-**AiTrace transforms automated decisions into technically and legally defensible evidence.**
-
----
-
-## Typical use cases
-
-AiTrace.NET is useful when you need to:
-- keep an auditable record of AI-driven decisions
-- investigate incidents or user disputes involving AI output
-- comply with internal or external audit requirements
-- demonstrate integrity of automated systems
-
----
-
-## Example scenarios
-
-AiTrace.NET can be used, for example, to audit:
-- loan approval or risk scoring decisions
-- automated content moderation systems
-- AI-generated recommendations shown to users
-- internal tools where AI output impacts business decisions
-
----
-
-## Why AiTrace.NET exists
-
-AI is increasingly used to:
-- make automated decisions
-- generate recommendations
-- filter, score, or classify data
-
-But most applications **cannot prove**:
-- which prompt was used
-- which model generated the output
-- what data was provided
-- when the decision happened
-- whether the output was later altered
-
-When something goes wrong, teams are left with:
-- incomplete logs
-- no versioning
-- no integrity guarantees
-
-**AiTrace.NET creates a verifiable audit trail for AI decisions.**
-
----
-
-## What AiTrace.NET does
-
-AiTrace.NET is a lightweight .NET library that:
-
-- records AI prompts and outputs
-- hashes and timestamps each decision
-- guarantees integrity of stored data
-- enables future audits and compliance checks
-- works locally with no required infrastructure
-
-No dashboards.  
-No cloud dependency.  
-No sales calls.  
-
-Just facts.
-
----
-
-## Storage & privacy
-
-By default, AiTrace.NET:
-- stores data locally (JSON files)
-- never sends data externally
-- keeps full control inside your application
-
-Cloud or centralized storage can be added later.
-
----
-
-## Who is this for?
-
-- .NET developers using AI in production
-- Enterprise teams with compliance requirements
-- Regulated industries (finance, HR, healthcare)
-- Anyone who needs provable AI behavior
-
----
-
-## What this is NOT
-
-- Not a chatbot
-- Not an AI wrapper
-- Not an analytics dashboard
-- Not a monitoring SaaS
-
-AiTrace.NET focuses on **truth**, not opinions.
+AiTrace does **not** explain decisions — it proves **what happened**.
 
 ---
 
@@ -413,43 +232,25 @@ AiTrace.NET focuses on **truth**, not opinions.
 
 AiTrace.NET is released under the **MIT License**.
 
-This means you may:
+You may:
 - use the source code freely
 - modify and fork the project
-- use AiTrace.NET for internal, experimental, or non-regulated use cases
+- use AiTrace.NET for internal or experimental use
 
 ### AiTrace.Pro (Compliance & Production Usage)
 
-Certain features are part of **AiTrace.Pro**, including:
-- cryptographic signature verification
+AiTrace.Pro includes:
+- cryptographic signatures
 - strict verification policies
-- compliance report generation (TXT / JSON)
-- license enforcement mechanisms
+- compliance reports
+- evidence bundles
+- bundle sealing and verification
 
-While the source code of AiTrace.Pro is visible, **production or compliance-grade usage requires a valid license**.
+While source code is visible, **production or compliance-grade usage requires a valid license**.
 
-Forking, modifying, or reimplementing AiTrace.Pro:
-- does **not** grant official compliance guarantees
-- does **not** provide legal or regulatory assurances
-- is **not** equivalent to using the official AiTrace.Pro package
-
-AiTrace.Pro is designed for organizations that require:
-- verifiable audit trails
-- non-repudiation
-- legally defensible evidence
-- long-term maintenance and compatibility
-
-If you need compliance-grade verification, use the official AiTrace.Pro package with a valid license.
-
----
-
-## Roadmap
-
-- Prompt versioning
-- Output diffing
-- Centralized audit store (optional)
-- Compliance-ready exports (PDF / JSON)
-- Enterprise features (SLA, support, encryption policies)
+Forking or reimplementing AiTrace.Pro:
+- does **not** grant compliance guarantees
+- does **not** provide legal assurance
 
 ---
 
