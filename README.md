@@ -119,6 +119,90 @@ Verification produces:
 
 ---
 
+## 🔍 Audit Diffing & Evidence Comparison (Pro)
+
+AiTrace Pro includes **audit-only diffing** capabilities designed for
+**forensic verification**, **regulatory review**, and **CI compliance gates**.
+
+### Diff audit trails between two evidence bundles
+
+The `diff-audit` command compares **only `audit/*.json` records**
+between two sealed evidence bundles.
+
+~~~bash
+dotnet run -- diff-audit "<bundleA>" "<bundleB>"
+~~~
+
+It detects:
+- **added** audit records
+- **removed** audit records
+- **modified** audit records
+
+Other files (reports, metadata, manifests) are ignored.
+
+---
+
+### Semantic audit classification
+
+Each comparison is classified as:
+
+- **IDENTICAL** — audit trails are byte-for-byte equivalent
+- **EXTENDED** — new audit records were appended (append-only)
+- **ALTERED** — records were removed or modified
+
+This distinction is critical for legal and compliance scenarios.
+
+---
+
+### Append-only & integrity assertions
+
+Assertions allow enforcement in CI pipelines or compliance checks:
+
+~~~bash
+# Fail unless audit trails are identical
+dotnet run -- diff-audit --assert-identical "<bundleA>" "<bundleB>"
+
+# Fail unless audit trail is append-only
+dotnet run -- diff-audit --assert-append-only "<bundleA>" "<bundleB>"
+~~~
+
+Exit codes are deterministic and machine-actionable.
+
+---
+
+### Deterministic audit hash
+
+Each audit trail produces a **stable SHA-256 audit hash**, computed from
+ordered `(path, sha256)` pairs of `audit/*.json`.
+
+This allows fingerprinting the audit history independently of:
+- reports
+- bundle metadata
+- export timestamps
+
+---
+
+### JSON output & file export
+
+For automation and archiving:
+
+~~~bash
+dotnet run -- diff-audit --json --out diff_audit.json "<bundleA>" "<bundleB>"
+~~~
+
+The JSON output includes:
+- bundle paths
+- bundle hashes
+- audit hashes
+- added / removed / modified records
+- semantic status
+- exit code
+- assertion results (if any)
+
+This makes audit evolution **scriptable**, **auditable**, and suitable for **regulatory review**.
+
+---
+
 ## Cryptographic Signatures (Pro)
 
 AiTrace Pro supports **cryptographic signing** of audit records.
@@ -157,16 +241,14 @@ An evidence bundle is a **self-contained, immutable snapshot** of an AI audit tr
 
 ### Evidence Bundle Structure
 
-evidence_YYYYMMDD_HHMMSS/
-├── audit/
-│   ├── 20260121_185311116_xxxxx.json
-│   └── ...
-├── compliance_report.txt
-├── compliance_report.json
-├── README.txt
-├── manifest.txt
-├── public_key.pem   (optional)
-└── seal.json
+evidence_YYYYMMDD_HHMMSS/ ├── 
+audit/ │   ├── 
+20260121_185311116_xxxxx.json │   
+└── ... ├── compliance_report.txt 
+├── compliance_report.json ├── 
+README.txt ├── manifest.txt ├── 
+public_key.pem   (optional) └── 
+seal.json
 
 ---
 
