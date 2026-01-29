@@ -106,7 +106,8 @@ var args2 = StripGlobalFlags(args);
 
 var mode = args2.Length > 0 ? args2[0].ToLowerInvariant() : "run";
 
-Console.WriteLine($"MODE={mode} | ARGS={string.Join(" | ", args2)}");
+if (args.Contains("--debug"))
+    Console.WriteLine($"MODE={mode} | ARGS={string.Join(" | ", args)}");
 
 // ==============================
 // MODE: RECHECK (no new audit, no new bundle)
@@ -219,120 +220,284 @@ if (mode == "diff")
 // Usage:
 //   dotnet run -- diff-audit "<bundleA>" "<bundleB>"
 //   dotnet run -- diff-audit --json "<bundleA>" "<bundleB>"
+//   dotnet run -- diff-audit --out "<path>" "<bundleA>" "<bundleB>"
+//   dotnet run -- diff-audit --json --out "<path>" "<bundleA>" "<bundleB>"
 //   dotnet run -- diff-audit --strict "<bundleA>" "<bundleB>"
-// Exit codes:
-//   0  = IDENTICAL ✅
-//   10 = EXTENDED ⚠️ (added only)
-//   30 = ALTERED ❌ (removed/modified, maybe added too)
-//   40 = ERROR ❌ (invalid paths / missing seal / parse error)
-//   2  = bad CLI usage
+//   dotnet run -- diff-audit --assert-identical "<bundleA>" "<bundleB>"
+//   dotnet run -- diff-audit --assert-append-only "<bundleA>" "<bundleB>"
+//   dotnet run -- diff-audit --assert-append-only --quiet "<bundleA>" "<bundleB>"
+//
+// Exit codes (best/common practice):
+//   0  = OK (IDENTICAL; OR APPEND-ONLY satisfied when asserted)
+//   10 = EXTENDED (added only) in normal mode
+//   20 = ALTERED OR assertion failed OR strict fail
+//   2  = usage error
+//   3  = runtime error (exception)
 // ==============================
 if (mode == "diff-audit")
 {
+    // Flags
     var strictMode = args.Contains("--strict");
     var asJsonMode = args.Contains("--json");
+    var assertIdentical = args.Contains("--assert-identical");
+    var assertAppendOnly = args.Contains("--assert-append-only");
+    var quietMode = args.Contains("--quiet");
 
-    // take non-flag args as paths (excluding "diff-audit" itself)
-    var paths = args
-        .Where(a => a != "diff-audit" && a != "--strict" && a != "--json")
-        .ToArray();
+    // Optional: --out "<path>"
+    string? outputPath = null;
+    for (int i = 0; i < args.Length; i++)
+    {
+        if (args[i] == "--out")
+        {
+            if (i + 1 >= args.Length || string.IsNullOrWhiteSpace(args[i + 1]))
+            {
+                Console.WriteLine("Usage error: --out requires a path argument.");
+                Environment.Exit(2);
+            }
 
-    if (paths.Length < 2)
+            outputPath = args[i + 1];
+            break;
+        }
+    }
+
+    // Extract bundle paths: ignore mode token + flags + --out + its value
+    var bundlePaths = new List<string>();
+    for (int i = 0; i < args.Length; i++)
+    {
+        var token = args[i];
+
+        if (token == "diff-audit") continue;
+
+        if (token is "--strict" or "--json" or "--assert-identical" or "--assert-append-only" or "--quiet")
+            continue;
+
+        if (token == "--out")
+        {
+            i++; // skip next token (the out path)
+            continue;
+        }
+
+        // Anything else is treated as a path arg
+        bundlePaths.Add(token);
+    }
+
+    if (bundlePaths.Count < 2)
     {
         Console.WriteLine("Usage:");
         Console.WriteLine("  dotnet run -- diff-audit \"<bundleA>\" \"<bundleB>\"");
         Console.WriteLine("  dotnet run -- diff-audit --json \"<bundleA>\" \"<bundleB>\"");
+        Console.WriteLine("  dotnet run -- diff-audit --out \"<path>\" \"<bundleA>\" \"<bundleB>\"");
+        Console.WriteLine("  dotnet run -- diff-audit --json --out \"<path>\" \"<bundleA>\" \"<bundleB>\"");
         Console.WriteLine("  dotnet run -- diff-audit --strict \"<bundleA>\" \"<bundleB>\"");
+        Console.WriteLine("  dotnet run -- diff-audit --assert-identical \"<bundleA>\" \"<bundleB>\"");
+        Console.WriteLine("  dotnet run -- diff-audit --assert-append-only \"<bundleA>\" \"<bundleB>\"");
+        Console.WriteLine("  dotnet run -- diff-audit --assert-append-only --quiet \"<bundleA>\" \"<bundleB>\"");
         Environment.Exit(2);
     }
 
-    var a = paths[0];
-    var b = paths[1];
+    var bundleA = bundlePaths[0];
+    var bundleB = bundlePaths[1];
 
-    // ✅ never throws (returns ExitCode=40 on errors)
-    var diff = EvidenceBundleAuditDiff.SafeCompare(a, b);
+    EvidenceBundleAuditDiffResult diffResult;
+    try
+    {
+        diffResult = EvidenceBundleAuditDiff.Compare(bundleA, bundleB);
+    }
+    catch (Exception ex)
+    {
+        var err = $"DIFF-AUDIT ERROR ❌ : {ex.GetType().Name} - {ex.Message}";
+        Console.WriteLine(err);
 
-    // ✅ JSON output
+        if (!string.IsNullOrWhiteSpace(outputPath))
+        {
+            try
+            {
+                var full = Path.GetFullPath(outputPath);
+                var dir = Path.GetDirectoryName(full);
+                if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+                File.WriteAllText(full, err);
+            }
+            catch { /* ignore */ }
+        }
+
+        Environment.Exit(3);
+        return;
+    }
+
+    // Outcome classification
+    var isIdentical = diffResult.IsIdentical;
+    var isExtended = diffResult.Removed.Count == 0 && diffResult.Changed.Count == 0 && diffResult.Added.Count > 0;
+
+    // Decide exit code (assertions override normal mode)
+    int exitCode;
+    if (assertIdentical)
+    {
+        // must be identical
+        exitCode = isIdentical ? 0 : 20;
+    }
+    else if (assertAppendOnly)
+    {
+        // must be identical OR extended
+        exitCode = (isIdentical || isExtended) ? 0 : 20;
+    }
+    else if (strictMode && !isIdentical)
+    {
+        exitCode = 20;
+    }
+    else if (isIdentical)
+    {
+        exitCode = 0;
+    }
+    else if (isExtended)
+    {
+        exitCode = 10;
+    }
+    else
+    {
+        exitCode = 20;
+    }
+
+    // Build output (text or json)
+    string output;
+
     if (asJsonMode)
     {
         var payload = new
         {
-            bundleA = diff.BundleA,
-            bundleB = diff.BundleB,
-            bundleHashA = diff.BundleHashA,
-            bundleHashB = diff.BundleHashB,
-            auditHashA = diff.AuditHashA,
-            auditHashB = diff.AuditHashB,
-            added = diff.Added,
-            removed = diff.Removed,
-            modified = diff.Changed,
-            error = diff.ErrorMessage,
+            bundleA = diffResult.BundleA,
+            bundleB = diffResult.BundleB,
+            bundleHashA = diffResult.BundleHashA,
+            bundleHashB = diffResult.BundleHashB,
+            auditHashA = diffResult.AuditHashA,
+            auditHashB = diffResult.AuditHashB,
+            added = diffResult.Added,
+            removed = diffResult.Removed,
+            modified = diffResult.Changed,
             summary = new
             {
-                added = diff.Added.Count,
-                removed = diff.Removed.Count,
-                modified = diff.Changed.Count,
-                kind = diff.Kind.ToString(),
-                severity = diff.Severity.ToString(),
-                exitCode = diff.ExitCode
+                added = diffResult.Added.Count,
+                removed = diffResult.Removed.Count,
+                modified = diffResult.Changed.Count,
+                kind = diffResult.Kind.ToString(),
+                severity = diffResult.Severity.ToString(),
+                status = (isIdentical ? "IDENTICAL" : isExtended ? "APPEND_ONLY" : "ALTERED"),
+                exitCode = exitCode,
+                assertedIdentical = assertIdentical,
+                assertedAppendOnly = assertAppendOnly,
+                strictMode = strictMode,
+                quietMode = quietMode
             }
         };
 
-        var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
-        Console.WriteLine(json);
-
-        if (diff.ExitCode == 40) Environment.Exit(40);
-
-        // strict => only identical is ok
-        if (strictMode && diff.ExitCode != 0) Environment.Exit(20);
-
-        Environment.Exit(diff.ExitCode);
+        output = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
     }
-
-    // ✅ TEXT output
-    Console.WriteLine();
-    Console.WriteLine("EVIDENCE DIFF (AUDIT ONLY):");
-    Console.WriteLine($" - A: {diff.BundleA}");
-    Console.WriteLine($" - B: {diff.BundleB}");
-    Console.WriteLine($" - BundleHashA: {diff.BundleHashA}");
-    Console.WriteLine($" - BundleHashB: {diff.BundleHashB}");
-    Console.WriteLine($" - AuditHashA : {diff.AuditHashA}");
-    Console.WriteLine($" - AuditHashB : {diff.AuditHashB}");
-
-    if (!string.IsNullOrWhiteSpace(diff.ErrorMessage))
+    else
     {
-        Console.WriteLine($"ERROR ❌ : {diff.ErrorMessage}");
-        Environment.Exit(40);
+        var sb = new StringBuilder();
+
+        sb.AppendLine();
+        sb.AppendLine("EVIDENCE DIFF (AUDIT ONLY):");
+        sb.AppendLine($" - A: {diffResult.BundleA}");
+        sb.AppendLine($" - B: {diffResult.BundleB}");
+        sb.AppendLine($" - BundleHashA: {diffResult.BundleHashA}");
+        sb.AppendLine($" - BundleHashB: {diffResult.BundleHashB}");
+        sb.AppendLine($" - AuditHashA : {diffResult.AuditHashA}");
+        sb.AppendLine($" - AuditHashB : {diffResult.AuditHashB}");
+
+        // Status line (nicer when assertions are used)
+        if (assertAppendOnly)
+        {
+            sb.AppendLine((isIdentical || isExtended)
+                ? $"STATUS ✅ : audit trail is APPEND-ONLY ({(isIdentical ? "IDENTICAL" : "EXTENDED")})"
+                : "STATUS ❌ : audit trail is NOT append-only (ALTERED)");
+        }
+        else if (assertIdentical)
+        {
+            sb.AppendLine(isIdentical
+                ? "STATUS ✅ : audit trail is IDENTICAL"
+                : "STATUS ❌ : audit trail is NOT identical");
+        }
+        else
+        {
+            sb.AppendLine(isIdentical
+                ? "DIFF OK ✅ : audit folders are identical"
+                : "DIFF FOUND ❌ : audit folders differ");
+        }
+
+        if (diffResult.Added.Count > 0)
+        {
+            sb.AppendLine("ADDED:");
+            foreach (var p in diffResult.Added) sb.AppendLine($" + {p}");
+        }
+
+        if (diffResult.Removed.Count > 0)
+        {
+            sb.AppendLine("REMOVED:");
+            foreach (var p in diffResult.Removed) sb.AppendLine($" - {p}");
+        }
+
+        if (diffResult.Changed.Count > 0)
+        {
+            sb.AppendLine("MODIFIED:");
+            foreach (var p in diffResult.Changed) sb.AppendLine($" * {p}");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine(diffResult.SummaryText);
+
+        if (assertIdentical && !isIdentical)
+        {
+            sb.AppendLine();
+            sb.AppendLine("ASSERTION FAIL ❌");
+            sb.AppendLine(" - Required: IDENTICAL");
+        }
+
+        if (assertAppendOnly && !(isIdentical || isExtended))
+        {
+            sb.AppendLine();
+            sb.AppendLine("ASSERTION FAIL ❌");
+            sb.AppendLine(" - Required: APPEND-ONLY (IDENTICAL or EXTENDED)");
+        }
+
+        if (strictMode && !isIdentical)
+        {
+            sb.AppendLine();
+            sb.AppendLine("STRICT FAIL ❌ : strict requires IDENTICAL");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine($"EXIT CODE: {exitCode}");
+
+        output = sb.ToString();
     }
 
-    Console.WriteLine(diff.IsIdentical
-        ? "DIFF OK ✅ : audit folders are identical"
-        : "DIFF FOUND ❌ : audit folders differ");
-
-    if (diff.Added.Count > 0)
+    // Console output (quiet rules):
+    // - quiet: print nothing on success (exitCode == 0), EXCEPT if --json is requested (common expectation)
+    if (!(quietMode && exitCode == 0 && !asJsonMode))
     {
-        Console.WriteLine("ADDED:");
-        foreach (var p in diff.Added) Console.WriteLine($" + {p}");
+        Console.WriteLine(output);
     }
 
-    if (diff.Removed.Count > 0)
+    // Optional: write to file (always writes when --out is provided)
+    if (!string.IsNullOrWhiteSpace(outputPath))
     {
-        Console.WriteLine("REMOVED:");
-        foreach (var p in diff.Removed) Console.WriteLine($" - {p}");
+        try
+        {
+            var full = Path.GetFullPath(outputPath);
+            var dir = Path.GetDirectoryName(full);
+            if (!string.IsNullOrWhiteSpace(dir))
+                Directory.CreateDirectory(dir);
+
+            File.WriteAllText(full, output);
+        }
+        catch (Exception ex)
+        {
+            // Do not change exit code for output failure.
+            Console.WriteLine($"WARN: failed to write --out file: {ex.GetType().Name} - {ex.Message}");
+        }
     }
 
-    if (diff.Changed.Count > 0)
-    {
-        Console.WriteLine("MODIFIED:");
-        foreach (var p in diff.Changed) Console.WriteLine($" * {p}");
-    }
-
-    Console.WriteLine();
-    Console.WriteLine(diff.SummaryText);
-
-    // Exit codes
-    if (strictMode && diff.ExitCode != 0) Environment.Exit(20);
-    Environment.Exit(diff.ExitCode);
+    Environment.Exit(exitCode);
 }
 
 // ==============================
