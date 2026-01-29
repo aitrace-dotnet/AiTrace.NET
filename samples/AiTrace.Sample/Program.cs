@@ -5,8 +5,67 @@ using AiTrace.Pro.Signing;
 using AiTrace.Pro.Stores;
 using AiTrace.Pro.Verification;
 using AiTrace.Pro.Verification.Evidence;
+using System.Text;
+using System.Text.Json;
 
-var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "run";
+// --------------------------------------------------
+// Global flags (work for ALL modes)
+//   --json           => JSON output to console or file
+//   --out "<path>"   => write output to file (txt or json)
+// --------------------------------------------------
+static bool HasFlag(string[] a, string flag)
+    => a.Any(x => string.Equals(x, flag, StringComparison.OrdinalIgnoreCase));
+
+static string? GetOptionValue(string[] a, string option)
+{
+    for (var i = 0; i < a.Length - 1; i++)
+    {
+        if (string.Equals(a[i], option, StringComparison.OrdinalIgnoreCase))
+            return a[i + 1];
+    }
+    return null;
+}
+
+// Remove global flags so your existing parsing stays clean
+static string[] StripGlobalFlags(string[] a)
+{
+    var list = new List<string>(a.Length);
+    for (int i = 0; i < a.Length; i++)
+    {
+        var cur = a[i];
+
+        if (string.Equals(cur, "--json", StringComparison.OrdinalIgnoreCase))
+            continue;
+
+        if (string.Equals(cur, "--out", StringComparison.OrdinalIgnoreCase))
+        {
+            // skip value too, if present
+            if (i + 1 < a.Length) i++;
+            continue;
+        }
+
+        list.Add(cur);
+    }
+    return list.ToArray();
+}
+
+static void WriteOutput(string text, bool asJson, string? outPath)
+{
+    if (string.IsNullOrWhiteSpace(outPath))
+    {
+        Console.WriteLine(text);
+        return;
+    }
+
+    var full = Path.GetFullPath(outPath);
+    Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+    File.WriteAllText(full, text, Encoding.UTF8);
+
+    // Optional: still tell user where it went
+    Console.WriteLine($"WROTE: {full}");
+}
+
+//var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "run";
 
 // ==============================
 // DEV / DEMO ONLY
@@ -41,7 +100,13 @@ var policy = new VerificationPolicy
 
 var verifier = new ChainVerifier(sigOpts, policy);
 
-Console.WriteLine($"MODE={mode} | ARGS={string.Join(" | ", args)}");
+var asJson = HasFlag(args, "--json");
+var outPath = GetOptionValue(args, "--out");
+var args2 = StripGlobalFlags(args);
+
+var mode = args2.Length > 0 ? args2[0].ToLowerInvariant() : "run";
+
+Console.WriteLine($"MODE={mode} | ARGS={string.Join(" | ", args2)}");
 
 // ==============================
 // MODE: RECHECK (no new audit, no new bundle)
@@ -150,37 +215,81 @@ if (mode == "diff")
 }
 
 // ==============================
-// MODE: DIFF-AUDIT (compare ONLY audit/*.json between 2 sealed bundles)
+// MODE: DIFF-AUDIT
 // Usage:
 //   dotnet run -- diff-audit "<bundleA>" "<bundleB>"
+//   dotnet run -- diff-audit --json "<bundleA>" "<bundleB>"
 //   dotnet run -- diff-audit --strict "<bundleA>" "<bundleB>"
 // Exit codes:
-//   0  = identical
-//   10 = extended (added only, no removed/modified)   [non-strict only]
-//   20 = altered (removed and/or modified) OR (strict: anything not identical)
+//   0  = IDENTICAL ✅
+//   10 = EXTENDED ⚠️ (added only)
+//   30 = ALTERED ❌ (removed/modified, maybe added too)
+//   40 = ERROR ❌ (invalid paths / missing seal / parse error)
+//   2  = bad CLI usage
 // ==============================
 if (mode == "diff-audit")
 {
     var strictMode = args.Contains("--strict");
+    var asJsonMode = args.Contains("--json");
 
+    // take non-flag args as paths (excluding "diff-audit" itself)
     var paths = args
-        .Where(a => a != "diff-audit" && a != "--strict")
+        .Where(a => a != "diff-audit" && a != "--strict" && a != "--json")
         .ToArray();
 
-    if (paths.Length < 2 || string.IsNullOrWhiteSpace(paths[0]) || string.IsNullOrWhiteSpace(paths[1]))
+    if (paths.Length < 2)
     {
         Console.WriteLine("Usage:");
-        Console.WriteLine("  dotnet run -- diff-audit \"C:\\path\\to\\evidence_A\" \"C:\\path\\to\\evidence_B\"");
-        Console.WriteLine("  dotnet run -- diff-audit --strict \"C:\\path\\to\\evidence_A\" \"C:\\path\\to\\evidence_B\"");
-        Environment.Exit(20);
-        return;
+        Console.WriteLine("  dotnet run -- diff-audit \"<bundleA>\" \"<bundleB>\"");
+        Console.WriteLine("  dotnet run -- diff-audit --json \"<bundleA>\" \"<bundleB>\"");
+        Console.WriteLine("  dotnet run -- diff-audit --strict \"<bundleA>\" \"<bundleB>\"");
+        Environment.Exit(2);
     }
 
     var a = paths[0];
     var b = paths[1];
 
-    var diff = EvidenceBundleAuditDiff.Compare(a, b);
+    // ✅ never throws (returns ExitCode=40 on errors)
+    var diff = EvidenceBundleAuditDiff.SafeCompare(a, b);
 
+    // ✅ JSON output
+    if (asJsonMode)
+    {
+        var payload = new
+        {
+            bundleA = diff.BundleA,
+            bundleB = diff.BundleB,
+            bundleHashA = diff.BundleHashA,
+            bundleHashB = diff.BundleHashB,
+            auditHashA = diff.AuditHashA,
+            auditHashB = diff.AuditHashB,
+            added = diff.Added,
+            removed = diff.Removed,
+            modified = diff.Changed,
+            error = diff.ErrorMessage,
+            summary = new
+            {
+                added = diff.Added.Count,
+                removed = diff.Removed.Count,
+                modified = diff.Changed.Count,
+                kind = diff.Kind.ToString(),
+                severity = diff.Severity.ToString(),
+                exitCode = diff.ExitCode
+            }
+        };
+
+        var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
+        Console.WriteLine(json);
+
+        if (diff.ExitCode == 40) Environment.Exit(40);
+
+        // strict => only identical is ok
+        if (strictMode && diff.ExitCode != 0) Environment.Exit(20);
+
+        Environment.Exit(diff.ExitCode);
+    }
+
+    // ✅ TEXT output
     Console.WriteLine();
     Console.WriteLine("EVIDENCE DIFF (AUDIT ONLY):");
     Console.WriteLine($" - A: {diff.BundleA}");
@@ -190,11 +299,13 @@ if (mode == "diff-audit")
     Console.WriteLine($" - AuditHashA : {diff.AuditHashA}");
     Console.WriteLine($" - AuditHashB : {diff.AuditHashB}");
 
-    var isIdentical = diff.IsIdentical;
-    var isExtendedOnly = diff.Removed.Count == 0 && diff.Changed.Count == 0 && diff.Added.Count > 0;
-    var isAltered = diff.Removed.Count > 0 || diff.Changed.Count > 0;
+    if (!string.IsNullOrWhiteSpace(diff.ErrorMessage))
+    {
+        Console.WriteLine($"ERROR ❌ : {diff.ErrorMessage}");
+        Environment.Exit(40);
+    }
 
-    Console.WriteLine(isIdentical
+    Console.WriteLine(diff.IsIdentical
         ? "DIFF OK ✅ : audit folders are identical"
         : "DIFF FOUND ❌ : audit folders differ");
 
@@ -212,36 +323,16 @@ if (mode == "diff-audit")
 
     if (diff.Changed.Count > 0)
     {
-        Console.WriteLine("CHANGED:");
+        Console.WriteLine("MODIFIED:");
         foreach (var p in diff.Changed) Console.WriteLine($" * {p}");
     }
 
     Console.WriteLine();
-    Console.WriteLine("SUMMARY:");
-    Console.WriteLine($"- {diff.Added.Count} audit record(s) ADDED");
-    Console.WriteLine($"- {diff.Removed.Count} audit record(s) REMOVED");
-    Console.WriteLine($"- {diff.Changed.Count} audit record(s) MODIFIED");
+    Console.WriteLine(diff.SummaryText);
 
-    int exitCode;
-
-    if (isIdentical)
-    {
-        Console.WriteLine("=> Audit trail is IDENTICAL ✅");
-        exitCode = 0;
-    }
-    else if (isExtendedOnly)
-    {
-        Console.WriteLine("=> Audit trail was EXTENDED (no alteration detected) ⚠️");
-        exitCode = strictMode ? 20 : 10;
-    }
-    else // altered (removed/changed) or any other non-identical case
-    {
-        Console.WriteLine("=> Audit trail was ALTERED ❌");
-        exitCode = 20;
-    }
-
-    Environment.Exit(exitCode);
-    return;
+    // Exit codes
+    if (strictMode && diff.ExitCode != 0) Environment.Exit(20);
+    Environment.Exit(diff.ExitCode);
 }
 
 // ==============================

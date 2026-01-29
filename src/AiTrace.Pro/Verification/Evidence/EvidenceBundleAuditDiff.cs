@@ -14,6 +14,9 @@ public static class EvidenceBundleAuditDiff
         PropertyNameCaseInsensitive = true
     };
 
+    /// <summary>
+    /// Compare and throw on errors (directory not found, missing seal, invalid JSON, etc.).
+    /// </summary>
     public static EvidenceBundleAuditDiffResult Compare(string bundleDirA, string bundleDirB)
     {
         if (string.IsNullOrWhiteSpace(bundleDirA)) throw new ArgumentNullException(nameof(bundleDirA));
@@ -34,7 +37,7 @@ public static class EvidenceBundleAuditDiff
         var removed = new List<string>();
         var changed = new List<string>();
 
-        // Added + Changed
+        // Added + Changed (B relative to A)
         foreach (var kv in dictB)
         {
             if (!dictA.TryGetValue(kv.Key, out var shaA))
@@ -71,6 +74,25 @@ public static class EvidenceBundleAuditDiff
         );
     }
 
+    /// <summary>
+    /// Compare but NEVER throw. If an error occurs, returns a result with ExitCode=40 and ErrorMessage populated.
+    /// </summary>
+    public static EvidenceBundleAuditDiffResult SafeCompare(string bundleDirA, string bundleDirB)
+    {
+        try
+        {
+            return Compare(bundleDirA, bundleDirB);
+        }
+        catch (Exception ex)
+        {
+            return EvidenceBundleAuditDiffResult.Error(
+                bundleA: bundleDirA,
+                bundleB: bundleDirB,
+                errorMessage: ex.Message
+            );
+        }
+    }
+
     private static EvidenceSeal LoadSeal(string bundleDir)
     {
         var root = Path.GetFullPath(bundleDir);
@@ -101,7 +123,7 @@ public static class EvidenceBundleAuditDiff
 
     /// <summary>
     /// Deterministic audit-only hash from (path, sha256) pairs:
-    /// "<path>\n<sha>\n" ordered by path (Ordinal), UTF-8, then SHA-256.
+    /// "&lt;path&gt;\n&lt;sha&gt;\n" ordered by path (Ordinal), UTF-8, then SHA-256.
     /// </summary>
     private static string ComputeAuditHash(Dictionary<string, string> auditFileHashes)
     {
@@ -118,6 +140,7 @@ public static class EvidenceBundleAuditDiff
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }
+
 public enum EvidenceAuditDiffKind
 {
     Identical = 0,
@@ -159,6 +182,7 @@ public sealed class EvidenceBundleAuditDiffResult
         Changed = changed;
 
         Kind = ComputeKind(Added.Count, Removed.Count, Changed.Count);
+
         Severity = Kind switch
         {
             EvidenceAuditDiffKind.Identical => EvidenceAuditDiffSeverity.Info,
@@ -166,15 +190,48 @@ public sealed class EvidenceBundleAuditDiffResult
             _ => EvidenceAuditDiffSeverity.Error
         };
 
+        // ✅ Exit codes (common & CI-friendly)
+        // 0 = identical, 10 = extended, 30 = altered
         ExitCode = Kind switch
         {
             EvidenceAuditDiffKind.Identical => 0,
             EvidenceAuditDiffKind.Extended => 10,
-            _ => 20
+            _ => 30
         };
 
         SummaryText = BuildSummaryText(Kind, Added.Count, Removed.Count, Changed.Count);
     }
+
+    private EvidenceBundleAuditDiffResult(
+        string bundleA,
+        string bundleB,
+        string errorMessage)
+    {
+        BundleA = Path.GetFullPath(bundleA ?? "");
+        BundleB = Path.GetFullPath(bundleB ?? "");
+        BundleHashA = "";
+        BundleHashB = "";
+        AuditHashA = "";
+        AuditHashB = "";
+        Added = new List<string>();
+        Removed = new List<string>();
+        Changed = new List<string>();
+
+        Kind = EvidenceAuditDiffKind.Altered;
+        Severity = EvidenceAuditDiffSeverity.Error;
+
+        // ✅ 40 = runtime error (invalid paths, missing seal, etc.)
+        ExitCode = 40;
+        ErrorMessage = errorMessage;
+
+        SummaryText =
+            "SUMMARY:\n" +
+            "- ERROR\n" +
+            $"=> {errorMessage}";
+    }
+
+    public static EvidenceBundleAuditDiffResult Error(string bundleA, string bundleB, string errorMessage)
+        => new(bundleA, bundleB, errorMessage);
 
     public string BundleA { get; }
     public string BundleB { get; }
@@ -183,7 +240,7 @@ public sealed class EvidenceBundleAuditDiffResult
     public string BundleHashA { get; }
     public string BundleHashB { get; }
 
-    // Deterministic hash of ONLY audit/* entries (computed by EvidenceBundleAuditDiff)
+    // Deterministic hash of ONLY audit/* entries
     public string AuditHashA { get; }
     public string AuditHashB { get; }
 
@@ -198,6 +255,7 @@ public sealed class EvidenceBundleAuditDiffResult
     public EvidenceAuditDiffSeverity Severity { get; }
     public int ExitCode { get; }
     public string SummaryText { get; }
+    public string? ErrorMessage { get; }
 
     private static EvidenceAuditDiffKind ComputeKind(int added, int removed, int changed)
     {
@@ -208,7 +266,7 @@ public sealed class EvidenceBundleAuditDiffResult
 
     private static string BuildSummaryText(EvidenceAuditDiffKind kind, int added, int removed, int changed)
     {
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
         sb.AppendLine("SUMMARY:");
         sb.AppendLine($"- {added} audit record(s) ADDED");
         sb.AppendLine($"- {removed} audit record(s) REMOVED");
