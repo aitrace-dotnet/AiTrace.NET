@@ -4,6 +4,7 @@ using AiTrace.Pro.Licensing;
 using AiTrace.Pro.Signing;
 using AiTrace.Pro.Stores;
 using AiTrace.Pro.Verification;
+using AiTrace.Pro.Verification.Evidence;
 
 var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "run";
 
@@ -11,7 +12,6 @@ var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "run";
 // DEV / DEMO ONLY
 // ==============================
 LicenseGuard.Mode = LicenseMode.Disabled;
-// (en Release, tu enlèves cette ligne ou tu ne la mets jamais)
 
 // ---- Paths ----
 var baseDir = AppContext.BaseDirectory;
@@ -40,6 +40,8 @@ var policy = new VerificationPolicy
 };
 
 var verifier = new ChainVerifier(sigOpts, policy);
+
+Console.WriteLine($"MODE={mode} | ARGS={string.Join(" | ", args)}");
 
 // ==============================
 // MODE: RECHECK (no new audit, no new bundle)
@@ -73,6 +75,179 @@ if (mode == "recheck")
 }
 
 // ==============================
+// MODE: SEALCHECK (verify seal.json for a bundle)
+// Usage: dotnet run -- sealcheck "<path_to_evidence_dir>"
+// ==============================
+if (mode == "sealcheck")
+{
+    if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1]))
+    {
+        Console.WriteLine("Usage: dotnet run -- sealcheck \"C:\\path\\to\\evidence_YYYYMMDD_HHMMSS\"");
+        return;
+    }
+
+    var evidenceDir = args[1];
+
+    var (ok, reason) = EvidenceBundleSealer.VerifySeal(evidenceDir);
+
+    Console.WriteLine();
+    Console.WriteLine("EVIDENCE SEALCHECK:");
+    Console.WriteLine($" - Evidence dir: {evidenceDir}");
+    Console.WriteLine(ok
+        ? "SEALCHECK OK ✅ : seal.json matches bundle contents"
+        : $"SEALCHECK FAIL ❌ : {reason}");
+
+    return;
+}
+
+// ==============================
+// MODE: DIFF (compare 2 sealed bundles - FULL bundle)
+// Usage: dotnet run -- diff "<bundleA>" "<bundleB>"
+// ==============================
+if (mode == "diff")
+{
+    if (args.Length < 3 || string.IsNullOrWhiteSpace(args[1]) || string.IsNullOrWhiteSpace(args[2]))
+    {
+        Console.WriteLine("Usage: dotnet run -- diff \"C:\\path\\to\\evidence_A\" \"C:\\path\\to\\evidence_B\"");
+        return;
+    }
+
+    var a = args[1];
+    var b = args[2];
+
+    var diff = EvidenceBundleDiff.Compare(a, b);
+
+    Console.WriteLine();
+    Console.WriteLine("EVIDENCE DIFF (FULL BUNDLE):");
+    Console.WriteLine($" - A: {diff.BundleA}");
+    Console.WriteLine($" - B: {diff.BundleB}");
+    Console.WriteLine($" - BundleHashA: {diff.BundleHashA}");
+    Console.WriteLine($" - BundleHashB: {diff.BundleHashB}");
+    Console.WriteLine(diff.IsIdentical
+        ? "DIFF OK ✅ : bundles are identical"
+        : "DIFF FOUND ❌ : bundles differ");
+
+    if (diff.Added.Count > 0)
+    {
+        Console.WriteLine("ADDED:");
+        foreach (var p in diff.Added) Console.WriteLine($" + {p}");
+    }
+
+    if (diff.Removed.Count > 0)
+    {
+        Console.WriteLine("REMOVED:");
+        foreach (var p in diff.Removed) Console.WriteLine($" - {p}");
+    }
+
+    if (diff.Changed.Count > 0)
+    {
+        Console.WriteLine("CHANGED:");
+        foreach (var c in diff.Changed)
+            Console.WriteLine($" * {c.Path}\n   A={c.Sha256A}\n   B={c.Sha256B}");
+    }
+
+    return;
+}
+
+// ==============================
+// MODE: DIFF-AUDIT (compare ONLY audit/*.json between 2 sealed bundles)
+// Usage: dotnet run -- diff-audit "<bundleA>" "<bundleB>"
+// ==============================
+if (mode == "diff-audit")
+{
+    if (args.Length < 3 || string.IsNullOrWhiteSpace(args[1]) || string.IsNullOrWhiteSpace(args[2]))
+    {
+        Console.WriteLine("Usage: dotnet run -- diff-audit \"C:\\path\\to\\evidence_A\" \"C:\\path\\to\\evidence_B\"");
+        return;
+    }
+
+    var a = args[1];
+    var b = args[2];
+
+    var diff = EvidenceBundleAuditDiff.Compare(a, b);
+
+    Console.WriteLine();
+    Console.WriteLine("EVIDENCE DIFF (AUDIT ONLY):");
+    Console.WriteLine($" - A: {diff.BundleA}");
+    Console.WriteLine($" - B: {diff.BundleB}");
+
+    // NOTE: ces valeurs viennent de seal.json (hash global du bundle).
+    // Le “audit-only hash” sera ajouté dans EvidenceBundleAuditDiff (étape suivante).
+    Console.WriteLine($" - BundleHashA: {diff.BundleHashA}");
+    Console.WriteLine($" - BundleHashB: {diff.BundleHashB}");
+    Console.WriteLine($" - AuditHashA : {diff.AuditHashA}");
+    Console.WriteLine($" - AuditHashB : {diff.AuditHashB}");
+
+    Console.WriteLine(diff.IsIdentical
+        ? "DIFF OK ✅ : audit folders are identical"
+        : "DIFF FOUND ❌ : audit folders differ");
+
+    if (diff.Added.Count > 0)
+    {
+        Console.WriteLine("ADDED:");
+        foreach (var p in diff.Added) Console.WriteLine($" + {p}");
+    }
+
+    if (diff.Removed.Count > 0)
+    {
+        Console.WriteLine("REMOVED:");
+        foreach (var p in diff.Removed) Console.WriteLine($" - {p}");
+    }
+
+    if (diff.Changed.Count > 0)
+    {
+        Console.WriteLine("CHANGED:");
+        foreach (var p in diff.Changed) Console.WriteLine($" * {p}");
+    }
+
+    Console.WriteLine();
+    Console.WriteLine("SUMMARY:");
+
+    Console.WriteLine($"- {diff.Added.Count} audit record(s) ADDED");
+    Console.WriteLine($"- {diff.Removed.Count} audit record(s) REMOVED");
+    Console.WriteLine($"- {diff.Changed.Count} audit record(s) MODIFIED");
+
+    if (diff.Removed.Count == 0 && diff.Changed.Count == 0 && diff.Added.Count > 0)
+    {
+        Console.WriteLine("=> Audit trail was EXTENDED (no alteration detected) ⚠️");
+    }
+    else if (diff.Added.Count == 0 && diff.Removed.Count == 0 && diff.Changed.Count == 0)
+    {
+        Console.WriteLine("=> Audit trail is IDENTICAL ✅");
+    }
+    else
+    {
+        Console.WriteLine("=> Audit trail was ALTERED ❌");
+    }
+
+    return;
+}
+
+// ==============================
+// MODE: SEAL (re-seal an existing evidence bundle)
+// Usage: dotnet run -- seal "<path_to_evidence_dir>"
+// ==============================
+if (mode == "seal")
+{
+    if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1]))
+    {
+        Console.WriteLine("Usage: dotnet run -- seal \"C:\\path\\to\\evidence_YYYYMMDD_HHMMSS\"");
+        return;
+    }
+
+    var evidenceDir = args[1];
+
+    var sealPathExisting = EvidenceBundleSealer.WriteSeal(evidenceDir);
+
+    Console.WriteLine();
+    Console.WriteLine("EVIDENCE SEAL:");
+    Console.WriteLine($" - Evidence dir: {evidenceDir}");
+    Console.WriteLine($"SEAL WRITTEN ✅ : {sealPathExisting}");
+
+    return; // ⛔ stop here → no new audit, no new bundle
+}
+
+// ==============================
 // NORMAL RUN: log + verify + export
 // ==============================
 
@@ -85,7 +260,6 @@ AiTrace.AiTrace.Configure(o =>
     var privateKeyPem = File.ReadAllText(@"C:\temp\aitrace_private.pem");
     var signer = new RsaAuditSignatureService(privateKeyPem);
 
-    // Pro store: computes PrevHash + Hash, then signs, then writes JSON files
     o.Store = new SignedJsonAuditStore(signer);
 });
 
@@ -160,7 +334,7 @@ var evidenceOptions = new EvidenceExportOptions
         Path.Combine(auditDir, "..", $"evidence_{DateTimeOffset.UtcNow:yyyyMMdd_HHmmss}")
     ),
     Scope = scope,
-    Policy = policy, // réutilise la même policy
+    Policy = policy,
     PublicKeyPemPath = @"C:\temp\aitrace_public.pem",
     FailIfOutputNotEmpty = true,
     WriteManifest = true
@@ -183,9 +357,19 @@ if (!string.IsNullOrWhiteSpace(evidence.ManifestPath))
     Console.WriteLine($" - Manifest   : {evidence.ManifestPath}");
 
 // ============================================================
+// EVIDENCE SEAL (bundle hash)
+// ============================================================
+var bundleDir = evidence.OutputDirectory;
+if (string.IsNullOrWhiteSpace(bundleDir))
+    throw new InvalidOperationException("ExportEvidence returned an empty OutputDirectory.");
+
+var sealPath = EvidenceBundleSealer.WriteSeal(bundleDir);
+Console.WriteLine($"SEAL WRITTEN: {sealPath}");
+
+// ============================================================
 // EVIDENCE RECHECK (of newly exported bundle)
 // ============================================================
-var evidenceAuditDir2 = Path.Combine(evidence.OutputDirectory, "audit");
+var evidenceAuditDir2 = Path.Combine(bundleDir, "audit");
 
 var recheck2 = verifier.VerifySummary(
     auditDirectory: evidenceAuditDir2,
