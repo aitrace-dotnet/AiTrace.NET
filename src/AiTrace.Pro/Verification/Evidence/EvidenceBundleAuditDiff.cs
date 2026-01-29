@@ -1,12 +1,11 @@
-﻿using System.Security.Cryptography;
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 
 namespace AiTrace.Pro.Verification.Evidence;
 
 /// <summary>
 /// Compare two evidence bundles but ONLY audit/*.json files (based on seal.json).
-/// Returns added/removed/changed relative paths + a deterministic AuditHashSha256 per bundle.
+/// Returns added/removed/changed relative paths + a semantic summary.
 /// </summary>
 public static class EvidenceBundleAuditDiff
 {
@@ -23,33 +22,19 @@ public static class EvidenceBundleAuditDiff
         var sealA = LoadSeal(bundleDirA);
         var sealB = LoadSeal(bundleDirB);
 
-        // Only audit/* entries
-        var auditFilesA = sealA.Files
+        var dictA = sealA.Files
             .Where(f => f.Path.StartsWith("audit/", StringComparison.OrdinalIgnoreCase))
-            .Select(f => new EvidenceSealEntry { Path = Normalize(f.Path), Sha256 = (f.Sha256 ?? "").ToLowerInvariant() })
-            .OrderBy(f => f.Path, StringComparer.Ordinal)
-            .ToList();
+            .ToDictionary(f => f.Path, f => f.Sha256, StringComparer.Ordinal);
 
-        var auditFilesB = sealB.Files
+        var dictB = sealB.Files
             .Where(f => f.Path.StartsWith("audit/", StringComparison.OrdinalIgnoreCase))
-            .Select(f => new EvidenceSealEntry { Path = Normalize(f.Path), Sha256 = (f.Sha256 ?? "").ToLowerInvariant() })
-            .OrderBy(f => f.Path, StringComparer.Ordinal)
-            .ToList();
-
-        // Deterministic audit-only hash for each bundle:
-        // "<path>\n<sha>\n" for each audit entry (same scheme as bundle hash, but filtered to audit/)
-        var auditHashA = ComputeAuditHash(auditFilesA);
-        var auditHashB = ComputeAuditHash(auditFilesB);
-
-        // Dict for diff (path -> sha)
-        var dictA = auditFilesA.ToDictionary(f => f.Path, f => f.Sha256, StringComparer.Ordinal);
-        var dictB = auditFilesB.ToDictionary(f => f.Path, f => f.Sha256, StringComparer.Ordinal);
+            .ToDictionary(f => f.Path, f => f.Sha256, StringComparer.Ordinal);
 
         var added = new List<string>();
         var removed = new List<string>();
         var changed = new List<string>();
 
-        // Added + Changed (B vs A)
+        // Added + Changed
         foreach (var kv in dictB)
         {
             if (!dictA.TryGetValue(kv.Key, out var shaA))
@@ -62,7 +47,7 @@ public static class EvidenceBundleAuditDiff
                 changed.Add(kv.Key);
         }
 
-        // Removed (present in A but not in B)
+        // Removed
         foreach (var kv in dictA)
         {
             if (!dictB.ContainsKey(kv.Key))
@@ -76,10 +61,10 @@ public static class EvidenceBundleAuditDiff
         return new EvidenceBundleAuditDiffResult(
             bundleA: Path.GetFullPath(bundleDirA),
             bundleB: Path.GetFullPath(bundleDirB),
-            bundleHashA: sealA.BundleHashSha256 ?? "",
-            bundleHashB: sealB.BundleHashSha256 ?? "",
-            auditHashA: auditHashA,
-            auditHashB: auditHashB,
+            bundleHashA: sealA.BundleHashSha256,
+            bundleHashB: sealB.BundleHashSha256,
+            auditHashA: ComputeAuditHash(dictA),
+            auditHashB: ComputeAuditHash(dictB),
             added: added,
             removed: removed,
             changed: changed
@@ -107,32 +92,44 @@ public static class EvidenceBundleAuditDiff
 
         foreach (var f in seal.Files)
         {
-            f.Path = Normalize(f.Path ?? "");
+            f.Path = (f.Path ?? "").Replace('\\', '/');
             f.Sha256 ??= "";
         }
 
         return seal;
     }
 
-    private static string Normalize(string path) => path.Replace('\\', '/');
-
-    private static string ComputeAuditHash(List<EvidenceSealEntry> orderedAuditEntries)
+    /// <summary>
+    /// Deterministic audit-only hash from (path, sha256) pairs:
+    /// "<path>\n<sha>\n" ordered by path (Ordinal), UTF-8, then SHA-256.
+    /// </summary>
+    private static string ComputeAuditHash(Dictionary<string, string> auditFileHashes)
     {
         var sb = new StringBuilder();
-        foreach (var e in orderedAuditEntries)
+
+        foreach (var kv in auditFileHashes.OrderBy(k => k.Key, StringComparer.Ordinal))
         {
-            sb.Append(e.Path).Append('\n');
-            sb.Append((e.Sha256 ?? "").ToLowerInvariant()).Append('\n');
+            sb.Append(kv.Key).Append('\n');
+            sb.Append(kv.Value).Append('\n');
         }
 
-        return Sha256Hex(Encoding.UTF8.GetBytes(sb.ToString()));
-    }
-
-    private static string Sha256Hex(byte[] data)
-    {
-        var hash = SHA256.HashData(data);
+        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
+}
+public enum EvidenceAuditDiffKind
+{
+    Identical = 0,
+    Extended = 1, // added only
+    Altered = 2   // removed and/or changed (can also include added)
+}
+
+public enum EvidenceAuditDiffSeverity
+{
+    Info = 0,
+    Warning = 1,
+    Error = 2
 }
 
 /// <summary>
@@ -160,16 +157,33 @@ public sealed class EvidenceBundleAuditDiffResult
         Added = added;
         Removed = removed;
         Changed = changed;
+
+        Kind = ComputeKind(Added.Count, Removed.Count, Changed.Count);
+        Severity = Kind switch
+        {
+            EvidenceAuditDiffKind.Identical => EvidenceAuditDiffSeverity.Info,
+            EvidenceAuditDiffKind.Extended => EvidenceAuditDiffSeverity.Warning,
+            _ => EvidenceAuditDiffSeverity.Error
+        };
+
+        ExitCode = Kind switch
+        {
+            EvidenceAuditDiffKind.Identical => 0,
+            EvidenceAuditDiffKind.Extended => 10,
+            _ => 20
+        };
+
+        SummaryText = BuildSummaryText(Kind, Added.Count, Removed.Count, Changed.Count);
     }
 
     public string BundleA { get; }
     public string BundleB { get; }
 
-    // From seal.json (whole bundle)
+    // Global bundle hash from seal.json
     public string BundleHashA { get; }
     public string BundleHashB { get; }
 
-    // Deterministic hash of ONLY audit/* entries (path+sha pairs)
+    // Deterministic hash of ONLY audit/* entries (computed by EvidenceBundleAuditDiff)
     public string AuditHashA { get; }
     public string AuditHashB { get; }
 
@@ -178,4 +192,35 @@ public sealed class EvidenceBundleAuditDiffResult
     public List<string> Changed { get; }
 
     public bool IsIdentical => Added.Count == 0 && Removed.Count == 0 && Changed.Count == 0;
+
+    // ✅ Machine-actionable fields
+    public EvidenceAuditDiffKind Kind { get; }
+    public EvidenceAuditDiffSeverity Severity { get; }
+    public int ExitCode { get; }
+    public string SummaryText { get; }
+
+    private static EvidenceAuditDiffKind ComputeKind(int added, int removed, int changed)
+    {
+        if (added == 0 && removed == 0 && changed == 0) return EvidenceAuditDiffKind.Identical;
+        if (removed == 0 && changed == 0 && added > 0) return EvidenceAuditDiffKind.Extended;
+        return EvidenceAuditDiffKind.Altered;
+    }
+
+    private static string BuildSummaryText(EvidenceAuditDiffKind kind, int added, int removed, int changed)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("SUMMARY:");
+        sb.AppendLine($"- {added} audit record(s) ADDED");
+        sb.AppendLine($"- {removed} audit record(s) REMOVED");
+        sb.AppendLine($"- {changed} audit record(s) MODIFIED");
+
+        sb.Append(kind switch
+        {
+            EvidenceAuditDiffKind.Identical => "=> Audit trail is IDENTICAL ✅",
+            EvidenceAuditDiffKind.Extended => "=> Audit trail was EXTENDED (no alteration detected) ⚠️",
+            _ => "=> Audit trail was ALTERED ❌"
+        });
+
+        return sb.ToString();
+    }
 }

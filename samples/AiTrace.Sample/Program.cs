@@ -151,18 +151,33 @@ if (mode == "diff")
 
 // ==============================
 // MODE: DIFF-AUDIT (compare ONLY audit/*.json between 2 sealed bundles)
-// Usage: dotnet run -- diff-audit "<bundleA>" "<bundleB>"
+// Usage:
+//   dotnet run -- diff-audit "<bundleA>" "<bundleB>"
+//   dotnet run -- diff-audit --strict "<bundleA>" "<bundleB>"
+// Exit codes:
+//   0  = identical
+//   10 = extended (added only, no removed/modified)   [non-strict only]
+//   20 = altered (removed and/or modified) OR (strict: anything not identical)
 // ==============================
 if (mode == "diff-audit")
 {
-    if (args.Length < 3 || string.IsNullOrWhiteSpace(args[1]) || string.IsNullOrWhiteSpace(args[2]))
+    var strictMode = args.Contains("--strict");
+
+    var paths = args
+        .Where(a => a != "diff-audit" && a != "--strict")
+        .ToArray();
+
+    if (paths.Length < 2 || string.IsNullOrWhiteSpace(paths[0]) || string.IsNullOrWhiteSpace(paths[1]))
     {
-        Console.WriteLine("Usage: dotnet run -- diff-audit \"C:\\path\\to\\evidence_A\" \"C:\\path\\to\\evidence_B\"");
+        Console.WriteLine("Usage:");
+        Console.WriteLine("  dotnet run -- diff-audit \"C:\\path\\to\\evidence_A\" \"C:\\path\\to\\evidence_B\"");
+        Console.WriteLine("  dotnet run -- diff-audit --strict \"C:\\path\\to\\evidence_A\" \"C:\\path\\to\\evidence_B\"");
+        Environment.Exit(20);
         return;
     }
 
-    var a = args[1];
-    var b = args[2];
+    var a = paths[0];
+    var b = paths[1];
 
     var diff = EvidenceBundleAuditDiff.Compare(a, b);
 
@@ -170,15 +185,16 @@ if (mode == "diff-audit")
     Console.WriteLine("EVIDENCE DIFF (AUDIT ONLY):");
     Console.WriteLine($" - A: {diff.BundleA}");
     Console.WriteLine($" - B: {diff.BundleB}");
-
-    // NOTE: ces valeurs viennent de seal.json (hash global du bundle).
-    // Le “audit-only hash” sera ajouté dans EvidenceBundleAuditDiff (étape suivante).
     Console.WriteLine($" - BundleHashA: {diff.BundleHashA}");
     Console.WriteLine($" - BundleHashB: {diff.BundleHashB}");
     Console.WriteLine($" - AuditHashA : {diff.AuditHashA}");
     Console.WriteLine($" - AuditHashB : {diff.AuditHashB}");
 
-    Console.WriteLine(diff.IsIdentical
+    var isIdentical = diff.IsIdentical;
+    var isExtendedOnly = diff.Removed.Count == 0 && diff.Changed.Count == 0 && diff.Added.Count > 0;
+    var isAltered = diff.Removed.Count > 0 || diff.Changed.Count > 0;
+
+    Console.WriteLine(isIdentical
         ? "DIFF OK ✅ : audit folders are identical"
         : "DIFF FOUND ❌ : audit folders differ");
 
@@ -202,24 +218,29 @@ if (mode == "diff-audit")
 
     Console.WriteLine();
     Console.WriteLine("SUMMARY:");
-
     Console.WriteLine($"- {diff.Added.Count} audit record(s) ADDED");
     Console.WriteLine($"- {diff.Removed.Count} audit record(s) REMOVED");
     Console.WriteLine($"- {diff.Changed.Count} audit record(s) MODIFIED");
 
-    if (diff.Removed.Count == 0 && diff.Changed.Count == 0 && diff.Added.Count > 0)
-    {
-        Console.WriteLine("=> Audit trail was EXTENDED (no alteration detected) ⚠️");
-    }
-    else if (diff.Added.Count == 0 && diff.Removed.Count == 0 && diff.Changed.Count == 0)
+    int exitCode;
+
+    if (isIdentical)
     {
         Console.WriteLine("=> Audit trail is IDENTICAL ✅");
+        exitCode = 0;
     }
-    else
+    else if (isExtendedOnly)
+    {
+        Console.WriteLine("=> Audit trail was EXTENDED (no alteration detected) ⚠️");
+        exitCode = strictMode ? 20 : 10;
+    }
+    else // altered (removed/changed) or any other non-identical case
     {
         Console.WriteLine("=> Audit trail was ALTERED ❌");
+        exitCode = 20;
     }
 
+    Environment.Exit(exitCode);
     return;
 }
 
