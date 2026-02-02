@@ -200,8 +200,23 @@ The JSON output includes:
 - assertion results (if any)
 
 This makes audit evolution **scriptable**, **auditable**, and suitable for **regulatory review**.
-
 ---
+
+### CI / Automation Example
+
+The `diff-audit` command is designed to be CI-friendly and can be used
+as a compliance gate in automated pipelines.
+
+#### Example: fail CI if audit trail was altered
+
+~~~bash
+dotnet run -- diff-audit --assert-append-only --quiet "<previous_bundle>" "<current_bundle>"
+
+if [ $? -ne 0 ]; then
+  echo "Audit trail integrity violation detected"
+  exit 1
+fi
+~~~
 
 ## Cryptographic Signatures (Pro)
 
