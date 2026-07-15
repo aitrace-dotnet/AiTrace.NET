@@ -1,54 +1,42 @@
-﻿using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
-
-namespace AiTrace;
+﻿namespace AiTrace;
 
 public static class AiTrace
 {
+    // Lock protecting concurrent Configure() calls.
+    private static readonly object _configLock = new();
+
     private static AiTraceOptions _options = new();
     private static bool _configured;
 
     public static void Configure(Action<AiTraceOptions> configure)
     {
         if (configure is null) throw new ArgumentNullException(nameof(configure));
-        configure(_options);
-        _configured = true;
+
+        lock (_configLock)
+        {
+            configure(_options);
+            _configured = true;
+        }
     }
 
     public static async Task LogDecisionAsync(AiDecision decision, CancellationToken ct = default)
     {
         if (decision is null) throw new ArgumentNullException(nameof(decision));
-        if (!_configured)
+
+        // Snapshot options to avoid races with concurrent Configure() calls.
+        AiTraceOptions opts;
+        lock (_configLock)
         {
-            // Default configuration is fine; this just documents intent.
-            _configured = true;
+            if (!_configured) _configured = true;
+            opts = _options;
         }
 
         var timestamp = decision.TimestampUtc ?? DateTimeOffset.UtcNow;
 
-        // Minimal canonical payload for hashing
-        var canonical = new
-        {
-            timestamp = timestamp.ToString("O"),
-            decision.Prompt,
-            decision.Output,
-            decision.Model,
-            decision.UserId,
-            metadata = decision.Metadata
-        };
-
-        var canonicalJson = JsonSerializer.Serialize(canonical);
-        var hash = ComputeSha256Hex(canonicalJson);
-
-        var record = AuditRecord.Create(decision, timestamp, hash, _options.StoreContent, _options.BasicRedaction);
-        await _options.Store.WriteAsync(record, ct).ConfigureAwait(false);
-    }
-
-    private static string ComputeSha256Hex(string input)
-    {
-        var bytes = Encoding.UTF8.GetBytes(input);
-        var hash = SHA256.HashData(bytes);
-        return Convert.ToHexString(hash).ToLowerInvariant();
+        // The store is responsible for computing the final hash (chain-aware).
+        // Passing an empty placeholder here; WriteAsync overwrites it with the
+        // correct chain hash via AuditHasher.ComputeRecordHash().
+        var record = AuditRecord.Create(decision, timestamp, string.Empty, opts.StoreContent, opts.BasicRedaction);
+        await opts.Store.WriteAsync(record, ct).ConfigureAwait(false);
     }
 }

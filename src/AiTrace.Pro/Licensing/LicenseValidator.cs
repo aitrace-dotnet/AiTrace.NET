@@ -12,8 +12,16 @@ public static class LicenseValidator
     // payloadJson exemple:
     // {"licensee":"Company Inc.","expiresUtc":"2026-12-31T23:59:59Z","plan":"Pro"}
 
-    // ✅ Clé publique RSA (PEM). Pour l'instant placeholder.
-    // Étape suivante: on génère une vraie paire de clés, et on remplace ce PEM.
+    // IMPORTANT: Replace this placeholder with your real RSA public key before distributing.
+    //
+    // To generate a key pair:
+    //   openssl genrsa -out aitrace_license_private.pem 2048
+    //   openssl rsa -in aitrace_license_private.pem -pubout -out aitrace_license_public.pem
+    //
+    // Then paste the content of aitrace_license_public.pem here.
+    //
+    // As long as this value contains the word "placeholder", any validation attempt
+    // will throw a descriptive exception instead of silently failing.
     private const string PublicKeyPem = """
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwplaceholderplaceholder
@@ -53,6 +61,15 @@ IDAQAB
         {
             reason = "Invalid base64 payload/signature.";
             return false;
+        }
+
+        // Guard against accidental use of the placeholder key.
+        if (PublicKeyPem.Contains("placeholder", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "AiTrace.Pro license validation is using a placeholder RSA public key. " +
+                "Generate a real key pair (openssl genrsa / openssl rsa -pubout) and " +
+                "replace the PublicKeyPem constant in LicenseValidator.cs before distributing.");
         }
 
         // Verify signature

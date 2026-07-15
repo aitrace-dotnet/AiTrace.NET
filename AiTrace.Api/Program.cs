@@ -1,6 +1,7 @@
 ﻿using System.Reflection;
 using System.Text.Json.Serialization;
 using AiTrace;
+using AiTrace.Api.Dtos;
 using AiTrace.Pro.Licensing;
 using AiTrace.Pro.Signing;
 using AiTrace.Pro.Stores;
@@ -100,6 +101,12 @@ app.MapGet("/health", () =>
 // 1) Log decision
 app.MapPost("/api/decisions", async (DecisionDto dto) =>
 {
+    if (string.IsNullOrWhiteSpace(dto.Prompt))
+        return Results.BadRequest("Prompt is required.");
+
+    if (string.IsNullOrWhiteSpace(dto.Output))
+        return Results.BadRequest("Output is required.");
+
     var decision = new AiDecision
     {
         Prompt = dto.Prompt,
@@ -194,52 +201,4 @@ app.MapGet("/api/reports/json", () =>
 
 app.Run();
 
-// -----------------------
-// DTOs
-// -----------------------
-public sealed class DecisionDto
-{
-    public string? Prompt { get; set; }
-    public string? Output { get; set; }
-    public string? Model { get; set; }
-    public string? UserId { get; set; }
-    public Dictionary<string, object?>? Metadata { get; set; }
-}
-
-public sealed class VerifyRequest
-{
-    public VerifyPolicyDto? Policy { get; set; }
-    public VerifyScopeDto? Scope { get; set; }
-    public bool ExportReports { get; set; } = true;
-}
-
-public sealed class VerifyPolicyDto
-{
-    public bool RequireSignatures { get; set; } = true;
-    public bool RequireChainIntegrity { get; set; } = true;
-    public bool FailOnMissingFiles { get; set; } = true;
-    public bool AllowStartMidChain { get; set; } = true;
-
-    public VerificationPolicy ToVerificationPolicy()
-        => new VerificationPolicy
-        {
-            RequireSignatures = RequireSignatures,
-            RequireChainIntegrity = RequireChainIntegrity,
-            FailOnMissingFiles = FailOnMissingFiles,
-            AllowStartMidChain = AllowStartMidChain
-        };
-}
-
-public sealed class VerifyScopeDto
-{
-    public DateTimeOffset? FromUtc { get; set; }
-    public DateTimeOffset? ToUtc { get; set; }
-
-    public VerificationScope ToScope()
-    {
-        if (FromUtc.HasValue && ToUtc.HasValue)
-            return VerificationScope.Between(FromUtc.Value, ToUtc.Value);
-
-        return VerificationScope.All();
-    }
-}
+// DTOs are in separate files under AiTrace.Api/Dtos/

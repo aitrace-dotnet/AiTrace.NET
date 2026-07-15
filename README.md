@@ -7,6 +7,7 @@
 **Audit & Proof Layer for AI Decisions in .NET**
 
 [![NuGet](https://img.shields.io/nuget/vpre/AiTrace.svg)](https://www.nuget.org/packages/AiTrace/)
+[![NuGet Pro](https://img.shields.io/nuget/vpre/AiTrace.Pro.svg)](https://www.nuget.org/packages/AiTrace.Pro/)
 
 > *Know exactly what your AI did, when, and why.*
 
@@ -16,11 +17,29 @@
 
 ~~~bash
 dotnet add package AiTrace --prerelease
+
+# Pro features (signatures, compliance reports, evidence bundles)
+dotnet add package AiTrace.Pro --prerelease
 ~~~
 
 ---
 
 ## Quickstart
+
+### Option 1 — ASP.NET Core (recommended)
+
+~~~csharp
+// Program.cs
+builder.Services.AddAiTrace(o =>
+{
+    o.StoreContent = true;
+    o.BasicRedaction = true;
+});
+~~~
+
+Then inject `IAuditStore` wherever you need it, or use `AiTrace.AiTrace.LogDecisionAsync()` directly.
+
+### Option 2 — Static configuration (console apps, workers)
 
 By default, audit files are written to a local `./aitrace` folder next to your application's executable.
 
@@ -56,6 +75,17 @@ This creates an **immutable JSON audit record** containing:
 - user identifier
 - prompt and output (optional)
 - structured metadata
+
+---
+
+## What's new in 0.1.0-preview.9
+
+- **ASP.NET Core DI support** — `AddAiTrace()` extension method for `IServiceCollection`
+- **AiTrace.Pro now on NuGet** — install separately with `dotnet add package AiTrace.Pro`
+- **Thread-safe stores** — `JsonAuditStore` and `SignedJsonAuditStore` are now safe under concurrent writes
+- **VerificationScope fix** — `UserId` and `Model` filters now correctly applied during chain verification
+- **`FailOnMissingFiles` policy** — now enforced when a `manifest.txt` is present in the audit directory
+- **Improved error messages** — `DecisionDto` returns proper 400 responses for missing required fields
 
 ---
 

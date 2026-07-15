@@ -1,18 +1,32 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
+using AiTrace.Pro.Licensing;
+using AiTrace.Pro.Signing;
 
-namespace AiTrace;
+namespace AiTrace.Pro.Stores;
 
-public sealed class JsonAuditStore : IAuditStore
+/// <summary>
+/// Pro JSON store:
+/// - finds PrevHash from the previous audit file
+/// - computes the record hash (including PrevHash)
+/// - signs the final hash with the configured RSA key
+/// - writes one JSON file per record
+/// </summary>
+public sealed class SignedJsonAuditStore : IAuditStore
 {
     private readonly string _directory;
+    private readonly IAuditSignatureService _signer;
 
     // Ensures only one write happens at a time per store instance
     // (prevents two concurrent writes from reading the same PrevHash).
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
-    public JsonAuditStore(string? directory = null)
+    public SignedJsonAuditStore(
+        IAuditSignatureService signer,
+        string? directory = null)
     {
+        _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+
         _directory = string.IsNullOrWhiteSpace(directory)
             ? Path.Combine(AppContext.BaseDirectory, "aitrace")
             : directory;
@@ -24,21 +38,34 @@ public sealed class JsonAuditStore : IAuditStore
     {
         if (record is null) throw new ArgumentNullException(nameof(record));
 
+        // Pro feature => requires a license
+        LicenseGuard.EnsureLicensed();
+
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             // 1) Chain hashing: find previous hash (audit files only)
             var prev = TryGetLastHash(_directory);
-            record.PrevHashSha256 = prev;
 
-            // 2) Recompute hash INCLUDING PrevHashSha256
+            // 2) Compute final hash INCLUDING PrevHashSha256
+            record.PrevHashSha256 = prev;
             record.HashSha256 = AuditHasher.ComputeRecordHash(record);
 
-            // 3) One file per record
-            var fileName = $"{record.TimestampUtc:yyyyMMdd_HHmmss}_{record.Id}.json";
+            // 3) Sign the final hash
+            var signature = _signer.Sign(record.HashSha256);
+
+            // record.Signature is init-only -> create an immutable copy with signature
+            var signed = record with
+            {
+                Signature = signature,
+                SignatureAlgorithm = "RSA-SHA256"
+            };
+
+            // 4) Write one file per record
+            var fileName = $"{signed.TimestampUtc:yyyyMMdd_HHmmssfff}_{signed.Id}.json";
             var path = Path.Combine(_directory, fileName);
 
-            var json = JsonSerializer.Serialize(record, new JsonSerializerOptions
+            var json = JsonSerializer.Serialize(signed, new JsonSerializerOptions
             {
                 WriteIndented = true
             });
@@ -56,13 +83,13 @@ public sealed class JsonAuditStore : IAuditStore
     {
         if (!Directory.Exists(auditDir)) return null;
 
-        // Only consider audit JSON files (starting with YYYYMMDD...).
-        // This excludes compliance_report.json, reports/, etc.
+        // Only consider audit JSON files starting with a digit (YYYYMMDD...).
+        // This excludes reports/compliance_report.json etc.
         var lastFile = Directory.GetFiles(auditDir, "*.json", SearchOption.AllDirectories)
             .Select(f => new { Path = f, Name = Path.GetFileName(f) })
             .Where(x =>
                 !string.IsNullOrWhiteSpace(x.Name) &&
-                char.IsDigit(x.Name[0]) // audit files start with date
+                char.IsDigit(x.Name[0])
             )
             .OrderByDescending(x => x.Name) // filename is chronological
             .Select(x => x.Path)

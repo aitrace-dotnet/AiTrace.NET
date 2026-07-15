@@ -83,7 +83,7 @@ var toUtc = DateTimeOffset.UtcNow;
 var scope = VerificationScope.Between(fromUtc, toUtc);
 
 // ---- Build verifier (integrity + signature) ----
-var publicKeyPem = File.ReadAllText(@"C:\temp\aitrace_public.pem");
+var publicKeyPem = File.ReadAllText(Path.Combine(Path.GetTempPath(), "aitrace_public.pem"));
 var sigOpts = new SignatureOptions
 {
     SignatureService = new RsaAuditSignatureService(publicKeyPem)
@@ -534,7 +534,7 @@ AiTrace.AiTrace.Configure(o =>
     o.StoreContent = true;
     o.BasicRedaction = true;
 
-    var privateKeyPem = File.ReadAllText(@"C:\temp\aitrace_private.pem");
+    var privateKeyPem = File.ReadAllText(Path.Combine(Path.GetTempPath(), "aitrace_private.pem"));
     var signer = new RsaAuditSignatureService(privateKeyPem);
 
     o.Store = new SignedJsonAuditStore(signer);
@@ -612,7 +612,7 @@ var evidenceOptions = new EvidenceExportOptions
     ),
     Scope = scope,
     Policy = policy,
-    PublicKeyPemPath = @"C:\temp\aitrace_public.pem",
+    PublicKeyPemPath = Path.Combine(Path.GetTempPath(), "aitrace_public.pem"),
     FailIfOutputNotEmpty = true,
     WriteManifest = true
 };

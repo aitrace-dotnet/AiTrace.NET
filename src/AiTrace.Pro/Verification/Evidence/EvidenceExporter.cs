@@ -162,7 +162,7 @@ public static class EvidenceExporter
             if (record is null)
                 continue;
 
-            if (!scope.Includes(record.TimestampUtc))
+            if (!scope.Includes(record))
                 continue;
 
             var dest = Path.Combine(auditOutDir, fileName);

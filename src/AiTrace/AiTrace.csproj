@@ -37,4 +37,12 @@
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      Lightweight DI abstractions only (IServiceCollection, etc.).
+      No runtime dependency on Microsoft.Extensions.DependencyInjection itself.
+    -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.0" />
+  </ItemGroup>
+
 </Project>

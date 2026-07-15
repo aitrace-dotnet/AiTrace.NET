@@ -4,7 +4,37 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!-- Package identity -->
+    <PackageId>AiTrace.Pro</PackageId>
+    <Version>0.1.0-preview.8</Version>
+
+    <!-- Ownership / metadata -->
+    <Authors>aitrace-dotnet</Authors>
+    <Company>aitrace-dotnet</Company>
+
+    <Description>
+      Pro add-on for AiTrace: RSA signing, chain verification, compliance reports,
+      evidence bundles and regulator-grade audit trails for AI decisions in .NET.
+    </Description>
+
+    <PackageTags>
+      ai;llm;audit;compliance;cryptography;signing;rsa;integrity;forensics;evidence
+    </PackageTags>
+
+    <RepositoryUrl>https://github.com/aitrace-dotnet/AiTrace.NET</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
+
+  <!-- Include root README in NuGet package -->
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\AiTrace\AiTrace.csproj" />

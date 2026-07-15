@@ -61,6 +61,37 @@ public sealed class ChainVerifier
             );
         }
 
+        // FailOnMissingFiles: when a manifest.txt exists in the evidence bundle root
+        // (parent of auditDirectory), verify that every file listed there is present.
+        if (_policy.FailOnMissingFiles)
+        {
+            var parentDir = Path.GetDirectoryName(Path.GetFullPath(auditDirectory));
+            if (parentDir is not null)
+            {
+                var manifestPath = Path.Combine(parentDir, "manifest.txt");
+                if (File.Exists(manifestPath))
+                {
+                    var listed = File.ReadAllLines(manifestPath)
+                        .Select(l => l.Trim())
+                        .Where(l => !string.IsNullOrWhiteSpace(l))
+                        .ToArray();
+
+                    foreach (var entry in listed)
+                    {
+                        var fullEntry = Path.Combine(auditDirectory, entry);
+                        if (!File.Exists(fullEntry))
+                        {
+                            return VerificationResult.Fail(
+                                VerificationStatus.ParseError,
+                                0,
+                                $"FailOnMissingFiles: file listed in manifest.txt is missing: {entry}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         // If strict signatures are required, we must have a SignatureService
         if (_policy.RequireSignatures && _sig.SignatureService is null)
         {
@@ -293,8 +324,8 @@ public sealed class ChainVerifier
                     var record = JsonSerializer.Deserialize<AuditRecord>(json, JsonOptions);
                     if (record is null) continue;
 
-                    // ✅ FIX: scope includes timestamp
-                    if (!scope.Includes(record.TimestampUtc)) continue;
+                    // Apply all scope filters (timestamp, UserId, Model).
+                    if (!scope.Includes(record)) continue;
 
                     filesCount++;
 
