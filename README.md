@@ -8,6 +8,7 @@
 
 [![NuGet](https://img.shields.io/nuget/vpre/AiTrace.svg)](https://www.nuget.org/packages/AiTrace/)
 [![NuGet Pro](https://img.shields.io/nuget/vpre/AiTrace.Pro.svg)](https://www.nuget.org/packages/AiTrace.Pro/)
+[![Website](https://img.shields.io/badge/website-aitrace--dotnet.github.io-6D28D9)](https://aitrace-dotnet.github.io/AiTrace.NET/)
 
 > *Know exactly what your AI did, when, and why.*
 
