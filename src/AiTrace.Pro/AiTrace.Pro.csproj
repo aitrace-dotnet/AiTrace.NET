@@ -22,6 +22,7 @@
       ai;llm;audit;compliance;cryptography;signing;rsa;integrity;forensics;evidence
     </PackageTags>
 
+    <PackageProjectUrl>https://aitrace-dotnet.github.io/AiTrace.NET/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/aitrace-dotnet/AiTrace.NET</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
 
