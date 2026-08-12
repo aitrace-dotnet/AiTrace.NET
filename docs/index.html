@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AiTrace.NET — Cryptographic Audit Trails for AI Decisions</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #FAFAF8;
+    --bg-2:     #FFFFFF;
+    --bg-code:  #111111;
+    --border:   #E7E5E0;
+    --accent:   #6D28D9;
+    --accent-l: #EDE9FE;
+    --green:    #059669;
+    --green-l:  #D1FAE5;
+    --text:     #57534E;
+    --text-hi:  #1C1917;
+    --text-lo:  #A8A29E;
+    --mono:     ui-monospace, 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    --sans:     -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --radius:   10px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* NAV */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    height: 56px;
+    display: flex; align-items: center;
+    background: rgba(250,250,248,0.9);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+  }
+
+  .nav-inner {
+    max-width: 1080px; margin: 0 auto; width: 100%;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .nav-logo {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--text-hi);
+    text-decoration: none;
+    letter-spacing: -0.02em;
+  }
+
+  .logo-sq {
+    width: 24px; height: 24px;
+    background: var(--text-hi);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-sq svg { color: var(--bg); }
+
+  .nav-links {
+    display: flex; align-items: center; gap: 0.25rem; list-style: none;
+  }
+  .nav-links a {
+    font-size: 0.875rem; color: var(--text);
+    text-decoration: none; padding: 0.35rem 0.65rem;
+    border-radius: 6px; transition: all 0.15s;
+  }
+  .nav-links a:hover { color: var(--text-hi); background: var(--border); }
+
+  .nav-right { display: flex; align-items: center; gap: 0.5rem; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    font-family: var(--sans); font-size: 0.8125rem; font-weight: 500;
+    padding: 0.4rem 0.9rem; border-radius: 8px;
+    text-decoration: none; transition: all 0.15s;
+    cursor: pointer; border: none; outline: none;
+  }
+  .btn-outline {
+    background: transparent; color: var(--text-hi);
+    border: 1px solid var(--border);
+  }
+  .btn-outline:hover { border-color: var(--text-lo); }
+  .btn-dark {
+    background: var(--text-hi); color: var(--bg);
+    font-weight: 600;
+  }
+  .btn-dark:hover { background: #2C2826; }
+
+  /* HERO */
+  .hero {
+    max-width: 1080px; margin: 0 auto;
+    padding: 5rem 2rem 4rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+    align-items: center;
+  }
+
+  @media (max-width: 768px) {
+    .hero { grid-template-columns: 1fr; gap: 2.5rem; }
+  }
+
+  .hero-left {}
+
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-size: 0.75rem; font-weight: 500;
+    color: var(--accent);
+    background: var(--accent-l);
+    padding: 0.25rem 0.65rem;
+    border-radius: 100px;
+    margin-bottom: 1.5rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(2rem, 4vw, 3.25rem);
+    font-weight: 800;
+    color: var(--text-hi);
+    line-height: 1.1;
+    letter-spacing: -0.05em;
+    text-wrap: balance;
+    margin-bottom: 1.25rem;
+  }
+
+  .hero-sub {
+    font-size: 1rem;
+    color: var(--text);
+    line-height: 1.75;
+    margin-bottom: 2rem;
+    max-width: 420px;
+  }
+
+  .hero-actions {
+    display: flex; flex-wrap: wrap; gap: 0.65rem;
+    align-items: center;
+    margin-bottom: 2.5rem;
+  }
+
+  .install-line {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-family: var(--mono); font-size: 0.8rem;
+    color: var(--text-hi);
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 0.875rem;
+  }
+
+  .copy-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-lo); line-height: 0; padding: 0;
+    transition: color 0.15s;
+  }
+  .copy-btn:hover { color: var(--accent); }
+
+  .hero-meta {
+    display: flex; gap: 1.5rem; flex-wrap: wrap;
+  }
+
+  .meta-item {
+    display: flex; align-items: center; gap: 0.4rem;
+    font-size: 0.8125rem; color: var(--text-lo);
+  }
+  .meta-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green);
+  }
+
+  /* CODE CARD */
+  .code-card {
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid #2A2A2A;
+    box-shadow: 0 24px 48px rgba(0,0,0,0.18), 0 4px 8px rgba(0,0,0,0.1);
+  }
+
+  .code-topbar {
+    background: #1A1A1A;
+    padding: 0.7rem 1rem;
+    display: flex; align-items: center; gap: 0.5rem;
+    border-bottom: 1px solid #2A2A2A;
+  }
+
+  .cd { width: 10px; height: 10px; border-radius: 50%; }
+  .cd.r { background: #FF5F57; }
+  .cd.y { background: #FFBD2E; }
+  .cd.g { background: #28CA41; }
+
+  .code-fname {
+    font-family: var(--mono); font-size: 0.68rem;
+    color: #6B6B6B; margin-left: 0.25rem;
+  }
+
+  .code-body {
+    background: var(--bg-code);
+    padding: 1.25rem 1.25rem;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.85;
+    color: #A3A3A3;
+    overflow-x: auto;
+  }
+
+  .kw { color: #C4B5FD; }
+  .fn { color: #7DD3FC; }
+  .st { color: #86EFAC; }
+  .cm { color: #525252; font-style: italic; }
+  .ty { color: #FCA5A5; }
+
+  /* LOGO STRIP */
+  .trust-strip {
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 1.5rem 2rem;
+    background: var(--bg-2);
+  }
+
+  .trust-inner {
+    max-width: 1080px; margin: 0 auto;
+    display: flex; align-items: center;
+    gap: 2rem; flex-wrap: wrap;
+  }
+
+  .trust-label {
+    font-size: 0.75rem; color: var(--text-lo);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  .trust-badges {
+    display: flex; gap: 0.5rem; flex-wrap: wrap;
+  }
+
+  .tbadge {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    color: var(--text-lo);
+    background: var(--bg);
+    letter-spacing: 0.03em;
+  }
+
+  /* FEATURES */
+  .features { padding: 5rem 2rem; }
+  .feat-container { max-width: 1080px; margin: 0 auto; }
+
+  .section-eyebrow {
+    font-size: 0.75rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--accent); margin-bottom: 0.5rem;
+  }
+
+  .section-title {
+    font-size: clamp(1.625rem, 2.5vw, 2.125rem);
+    font-weight: 800; color: var(--text-hi);
+    letter-spacing: -0.04em; line-height: 1.2;
+    text-wrap: balance; margin-bottom: 3rem;
+  }
+
+  .feat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  @media (max-width: 700px) {
+    .feat-grid { grid-template-columns: 1fr; }
+    nav .nav-links { display: none; }
+  }
+
+  .feat {
+    padding: 1.75rem;
+    background: var(--bg-2);
+    transition: background 0.15s;
+  }
+  .feat:hover { background: var(--bg); }
+
+  .feat-icon-wrap {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--accent-l);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 1rem;
+    color: var(--accent);
+  }
+
+  .feat h3 {
+    font-size: 0.9375rem; font-weight: 700;
+    color: var(--text-hi); margin-bottom: 0.4rem;
+    letter-spacing: -0.02em;
+  }
+  .feat p { font-size: 0.8125rem; color: var(--text); line-height: 1.65; }
+
+  .pro-tag {
+    display: inline-block;
+    font-family: var(--mono); font-size: 0.6rem;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-l);
+    padding: 0.1rem 0.4rem; border-radius: 4px;
+    margin-left: 0.35rem; vertical-align: middle;
+  }
+
+  /* HOW */
+  .how-section {
+    padding: 5rem 2rem;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .how-inner { max-width: 1080px; margin: 0 auto; }
+
+  .how-section .section-eyebrow { color: var(--accent); }
+  .how-section .section-title { color: var(--text-hi); margin-bottom: 3rem; }
+
+  .how-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2rem;
+  }
+
+  @media (max-width: 700px) {
+    .how-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  .how-step { }
+  .how-num {
+    font-family: var(--mono); font-size: 0.65rem;
+    color: var(--text-lo); letter-spacing: 0.1em;
+    margin-bottom: 0.75rem;
+  }
+  .how-step h3 {
+    font-size: 1rem; font-weight: 700; color: var(--text-hi);
+    margin-bottom: 0.5rem; letter-spacing: -0.02em;
+  }
+  .how-step p { font-size: 0.8125rem; color: var(--text); line-height: 1.65; }
+  .how-line {
+    width: 24px; height: 2px; background: var(--accent);
+    margin-bottom: 1rem;
+  }
+
+  /* PRO */
+  .pro-section { padding: 5rem 2rem; background: var(--bg-2); border-top: 1px solid var(--border); }
+  .pro-inner { max-width: 1080px; margin: 0 auto; }
+
+  .pro-layout {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 4rem; align-items: start; margin-top: 3rem;
+  }
+  @media (max-width: 700px) { .pro-layout { grid-template-columns: 1fr; } }
+
+  .pro-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+  .pro-row {
+    display: flex; align-items: flex-start; gap: 0.75rem;
+    padding: 1rem 1.125rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+
+  .check {
+    width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+    background: var(--green-l);
+    border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
+    display: flex; align-items: center; justify-content: center;
+    margin-top: 1px; color: var(--green); font-size: 0.6rem;
+  }
+
+  .pro-row h4 { font-size: 0.875rem; font-weight: 700; color: var(--text-hi); margin-bottom: 0.15rem; letter-spacing: -0.01em; }
+  .pro-row p  { font-size: 0.78rem; color: var(--text-lo); line-height: 1.5; }
+
+  .pro-code-card {
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid #2A2A2A;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  }
+
+  /* CTA */
+  .cta-section {
+    padding: 6rem 2rem;
+    text-align: center;
+    border-top: 1px solid var(--border);
+  }
+
+  .cta-inner { max-width: 540px; margin: 0 auto; }
+
+  .cta-section h2 {
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 800; color: var(--text-hi);
+    letter-spacing: -0.05em; line-height: 1.1;
+    text-wrap: balance; margin-bottom: 1rem;
+  }
+
+  .cta-section p {
+    font-size: 0.9375rem; color: var(--text);
+    margin-bottom: 2rem;
+  }
+
+  .cta-btns { display: flex; gap: 0.65rem; justify-content: center; flex-wrap: wrap; }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 1.5rem 2rem;
+    background: var(--bg-2);
+  }
+  .foot-inner {
+    max-width: 1080px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 1rem;
+    font-size: 0.78rem; color: var(--text-lo);
+  }
+  .foot-links { display: flex; gap: 1.25rem; }
+  .foot-links a { color: var(--text-lo); text-decoration: none; transition: color 0.15s; }
+  .foot-links a:hover { color: var(--text-hi); }
+</style>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-inner">
+    <a class="nav-logo" href="#">
+      <span class="logo-sq">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/></svg>
+      </span>
+      AiTrace.NET
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#pro">Pro</a></li>
+    </ul>
+    <div class="nav-right">
+      <a href="https://github.com/aitrace-dotnet/AiTrace.NET" class="btn btn-outline" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.nuget.org/packages/AiTrace/" class="btn btn-dark" target="_blank" rel="noopener">Get on NuGet</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div style="background:var(--bg-2); border-bottom:1px solid var(--border);">
+  <div class="hero">
+    <div class="hero-left">
+      <span class="hero-badge">v0.1.0-preview.9 · MIT · .NET 8</span>
+      <h1>Prove what your AI did.</h1>
+      <p class="hero-sub">
+        Tamper-evident audit records for AI decisions in .NET. SHA-256 hashing, hash chaining, and RSA signatures — so you can verify it later.
+      </p>
+      <div class="hero-actions">
+        <div class="install-line">
+          <span>dotnet add package AiTrace --prerelease</span>
+          <button class="copy-btn" onclick="copyCmd(this,'dotnet add package AiTrace --prerelease')" title="Copy">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z"/></svg>
+          </button>
+        </div>
+        <a href="https://github.com/aitrace-dotnet/AiTrace.NET" class="btn btn-outline" target="_blank" rel="noopener">View docs</a>
+      </div>
+      <div class="hero-meta">
+        <span class="meta-item"><span class="meta-dot"></span> Open source</span>
+        <span class="meta-item"><span class="meta-dot"></span> No external service</span>
+        <span class="meta-item"><span class="meta-dot"></span> Thread-safe</span>
+      </div>
+    </div>
+
+    <div class="code-card">
+      <div class="code-topbar">
+        <span class="cd r"></span><span class="cd y"></span><span class="cd g"></span>
+        <span class="code-fname">Program.cs</span>
+      </div>
+      <div class="code-body"><span class="cm">// 1. Register in ASP.NET Core</span>
+<span class="fn">builder</span>.<span class="fn">Services</span>.<span class="fn">AddAiTrace</span>(<span class="kw">o</span> =>
+{
+    <span class="kw">o</span>.<span class="fn">StoreContent</span>  = <span class="kw">true</span>;
+    <span class="kw">o</span>.<span class="fn">BasicRedaction</span> = <span class="kw">true</span>;
+});
+
+<span class="cm">// 2. Inject and log a decision</span>
+<span class="kw">public class</span> <span class="ty">DecisionService</span>(
+    <span class="ty">IAuditStore</span> store)
+{
+    <span class="kw">public async</span> <span class="ty">Task</span> LogAsync()
+    {
+        <span class="kw">await</span> store.<span class="fn">LogDecisionAsync</span>(
+            <span class="kw">new</span> <span class="ty">AiDecision</span>
+            {
+                Prompt  = <span class="st">"Summarize the contract."</span>,
+                Output  = <span class="st">"The contract covers..."</span>,
+                Model   = <span class="st">"gpt-4o"</span>,
+                UserId  = <span class="st">"user-42"</span>
+            });
+    }
+}</div>
+    </div>
+  </div>
+</div>
+
+<!-- TRUST STRIP -->
+<div class="trust-strip">
+  <div class="trust-inner">
+    <span class="trust-label">Built with</span>
+    <div class="trust-badges">
+      <span class="tbadge">SHA-256 hashing</span>
+      <span class="tbadge">hash chaining</span>
+      <span class="tbadge">RSA-SHA256 signatures</span>
+      <span class="tbadge">compliance reports</span>
+      <span class="tbadge">evidence bundles</span>
+      <span class="tbadge">ASP.NET Core DI</span>
+    </div>
+  </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<section class="how-section" id="how">
+  <div class="how-inner">
+    <p class="section-eyebrow">How it works</p>
+    <h2 class="section-title">A proof layer on every AI call</h2>
+    <div class="how-grid">
+      <div class="how-step">
+        <div class="how-num">01</div>
+        <div class="how-line"></div>
+        <h3>Hash</h3>
+        <p>Each decision is hashed with SHA-256. The hash covers timestamp, model, user ID, prompt, and output.</p>
+      </div>
+      <div class="how-step">
+        <div class="how-num">02</div>
+        <div class="how-line"></div>
+        <h3>Chain</h3>
+        <p>Every record stores the hash of the previous one. Remove or alter any record and the chain breaks permanently.</p>
+      </div>
+      <div class="how-step">
+        <div class="how-num">03</div>
+        <div class="how-line"></div>
+        <h3>Sign <span style="font-size:0.65rem;color:#A78BFA;font-weight:400;">PRO</span></h3>
+        <p>Sign each record with your RSA private key for non-repudiation and independent third-party verification.</p>
+      </div>
+      <div class="how-step">
+        <div class="how-num">04</div>
+        <div class="how-line"></div>
+        <h3>Verify</h3>
+        <p>Run chain verification at any time. AiTrace detects tampering, missing files, and broken chains instantly.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="feat-container">
+    <p class="section-eyebrow">Features</p>
+    <h2 class="section-title">Everything in the core package is free</h2>
+    <div class="feat-grid">
+      <div class="feat">
+        <div class="feat-icon-wrap">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707L9.293 0zM9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1z"/></svg>
+        </div>
+        <h3>Immutable JSON Records</h3>
+        <p>Every audit record is a plain JSON file in a local folder you control. No database, no external service.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon-wrap">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.52.359A.5.5 0 0 1 6 0h4a.5.5 0 0 1 .474.658L8.694 6H12.5a.5.5 0 0 1 .395.808l-7 9a.5.5 0 0 1-.873-.454L6.823 9.5H3.5a.5.5 0 0 1-.48-.641l2.5-8.5z"/></svg>
+        </div>
+        <h3>SHA-256 Hash Chaining</h3>
+        <p>Records are cryptographically linked. Any retroactive modification to any record is immediately detectable.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon-wrap">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H1zm.5 2h13v10h-13V3z"/></svg>
+        </div>
+        <h3>ASP.NET Core DI</h3>
+        <p>One call to <code style="font-family:var(--mono);font-size:0.82em;color:var(--accent)">AddAiTrace()</code>. Inject <code style="font-family:var(--mono);font-size:0.82em;color:var(--accent)">IAuditStore</code> anywhere in your app.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon-wrap">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/></svg>
+        </div>
+        <h3>RSA-SHA256 Signatures <span class="pro-tag">Pro</span></h3>
+        <p>Sign records with your private key. Regulators and clients can independently verify with your public key.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon-wrap">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H2zm10.854 3.854-5 5a.5.5 0 0 1-.708 0l-2-2a.5.5 0 0 1 .708-.708L7.5 9.793l4.646-4.647a.5.5 0 0 1 .708.708z"/></svg>
+        </div>
+        <h3>Compliance Reports <span class="pro-tag">Pro</span></h3>
+        <p>Generate text and JSON reports summarizing integrity, signature validity, and time range covered.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon-wrap">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1H0V4zm0 3h16v5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V7zm3 2a.5.5 0 0 0 0 1h1a.5.5 0 0 0 0-1H3zm2.5 0a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5z"/></svg>
+        </div>
+        <h3>Evidence Bundles <span class="pro-tag">Pro</span></h3>
+        <p>Export a sealed, self-contained audit trail snapshot with a SHA-256 bundle hash. Built for legal review.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRO -->
+<section class="pro-section" id="pro">
+  <div class="pro-inner">
+    <p class="section-eyebrow">AiTrace.Pro</p>
+    <h2 class="section-title">For teams that answer to regulators</h2>
+    <div class="pro-layout">
+      <div class="pro-list">
+        <div class="pro-row"><span class="check">✓</span><div><h4>RSA-SHA256 Signatures</h4><p>Non-repudiation for every decision record</p></div></div>
+        <div class="pro-row"><span class="check">✓</span><div><h4>Compliance Reports</h4><p>Text and JSON — regulator-ready output</p></div></div>
+        <div class="pro-row"><span class="check">✓</span><div><h4>Evidence Bundles</h4><p>Sealed, portable audit trail snapshots</p></div></div>
+        <div class="pro-row"><span class="check">✓</span><div><h4>Bundle Sealing</h4><p>SHA-256 fingerprint of the entire bundle</p></div></div>
+        <div class="pro-row"><span class="check">✓</span><div><h4>Audit Diffing</h4><p>Compare two bundles with CI-ready exit codes</p></div></div>
+        <div class="pro-row"><span class="check">✓</span><div><h4>FailOnMissingFiles</h4><p>Enforce append-only policies on audit dirs</p></div></div>
+      </div>
+      <div class="pro-code-card">
+        <div class="code-topbar">
+          <span class="cd r"></span><span class="cd y"></span><span class="cd g"></span>
+          <span class="code-fname">terminal</span>
+        </div>
+        <div class="code-body"><span class="cm"># Install Pro</span>
+dotnet add package AiTrace.Pro --prerelease
+
+<span class="cm"># Verify a chain</span>
+<span class="kw">var</span> result = <span class="kw">await</span> verifier
+    .<span class="fn">VerifyChainAsync</span>(<span class="st">"./aitrace"</span>);
+
+<span class="cm"># Export evidence bundle</span>
+<span class="kw">var</span> bundle = <span class="kw">await</span> exporter
+    .<span class="fn">ExportBundleAsync</span>(<span class="st">"./aitrace"</span>);
+
+<span class="cm"># Seal the bundle</span>
+<span class="ty">EvidenceBundleSealer</span>
+    .<span class="fn">WriteSeal</span>(bundle.Path);
+
+<span class="cm"># Verify seal integrity</span>
+<span class="kw">var</span> (ok, reason) =
+    <span class="ty">EvidenceBundleSealer</span>
+        .<span class="fn">VerifySeal</span>(bundle.Path);</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <div class="cta-inner">
+    <h2>Start auditing your AI today.</h2>
+    <p>Open source, MIT licensed, no external dependencies. Works with any .NET 8 app.</p>
+    <div class="cta-btns">
+      <a href="https://github.com/aitrace-dotnet/AiTrace.NET" class="btn btn-outline" target="_blank" rel="noopener">View on GitHub</a>
+      <a href="https://www.nuget.org/packages/AiTrace/" class="btn btn-dark" target="_blank" rel="noopener">Get on NuGet</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="foot-inner">
+    <span>© 2026 aitrace-dotnet · MIT License</span>
+    <div class="foot-links">
+      <a href="https://github.com/aitrace-dotnet/AiTrace.NET" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.nuget.org/packages/AiTrace/" target="_blank" rel="noopener">AiTrace</a>
+      <a href="https://www.nuget.org/packages/AiTrace.Pro/" target="_blank" rel="noopener">AiTrace.Pro</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+function copyCmd(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" fill="var(--green)"><path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z"/></svg>';
+    setTimeout(() => { btn.innerHTML = orig; }, 1500);
+  });
+}
+</script>
